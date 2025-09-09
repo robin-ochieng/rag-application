@@ -31,7 +31,7 @@ react_prompt_with_format_instructions = PromptTemplate(
     template=REACT_PROMPT_WITH_FORMAT_INSTRUCTIONS,
     input_variables=[
         "input",
-        "agent_scratchpad"
+        "agent_scratchpad",
         "tool_names"
     ]).partial(format_instructions=output_parser.get_format_instructions())
 
