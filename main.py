@@ -11,6 +11,8 @@ from langchain.agents.output_parsers import ReActSingleInputOutputParser
 from langchain_core.output_parsers import BaseOutputParser
 from langchain_core.tools import Tool
 from langchain_core.agents import AgentAction, AgentFinish
+from callbacks import AgentCallbackHandler
+
 load_dotenv()
 
 def render_text_description(tools):
@@ -52,7 +54,7 @@ if __name__ == "__main__":
     )
 
     # Stop generation right before the model tries to write an Observation or a Final Answer.
-    llm = ChatOpenAI(temperature=0, stop=["\nObservation:", "\nFinal Answer:"])
+    llm = ChatOpenAI(temperature=0, stop=["\nObservation:", "\nFinal Answer:"], callbacks=[AgentCallbackHandler()])
 
     class SimpleReActParser(BaseOutputParser):
         """Lenient parser that supports either an Action block or a Final Answer line.
