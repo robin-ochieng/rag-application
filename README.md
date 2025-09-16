@@ -207,4 +207,29 @@ curl -s -X POST http://localhost:8080/chat \
    -H "X-API-KEY: $BACKEND_API_KEY" \
    -d '{"message":"Summarize the Insurance Act"}'
 ```
+
+## 🐳 Publishing Docker Image to GHCR
+
+This repo includes a GitHub Actions workflow that builds and publishes the image to GitHub Container Registry (GHCR).
+
+- File: `.github/workflows/docker.yml`
+- Triggers: push to `main` (build + push), PRs to `main` (build only)
+- Image name: `ghcr.io/<OWNER>/<REPO>/insurance-act-rag-api:latest`
+
+### How it works
+- Logs in to GHCR using `GITHUB_TOKEN`.
+- Caches `pip` and uses Buildx GHA cache for faster builds.
+- Push occurs only on push events to `main`.
+
+### Render using GHCR (optional)
+Instead of auto-building from the repo, you can point Render at the GHCR image:
+
+1. Create a Web Service on Render and choose “Docker” as environment.
+2. For Image, set:
+   `ghcr.io/<OWNER>/<REPO>/insurance-act-rag-api:latest`
+3. Add environment variables as documented above.
+4. Under “Deploy Script”, leave default because the image already starts via `CMD`.
+5. Authentication: If your GHCR is private, provide a deploy key or a registry auth token; public images need no auth.
+
+Alternatively, you can let Render auto-build from this repo (as previously described) and ignore GHCR.
 ```
