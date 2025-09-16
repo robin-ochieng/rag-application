@@ -1,7 +1,7 @@
 import os
 import sys
 from dotenv import load_dotenv
-from langchain_community.document_loaders import TextLoader
+from langchain_community.document_loaders import TextLoader, PyPDFLoader
 from langchain.text_splitter import CharacterTextSplitter
 # Use modern embeddings import (community variant is deprecated)
 try:
@@ -30,14 +30,20 @@ def get_env(name: str, default: str | None = None) -> str:
 if __name__ == "__main__":
     print("Ingesting...")
 
-    # Load text file with proper encoding4
-    try:
-        loader = TextLoader("mediumblog1.txt", encoding="utf-8")
-        documents = loader.load()
-    except UnicodeDecodeError:
-        # Fallback to different encoding if UTF-8 fails
-        loader = TextLoader("mediumblog1.txt", encoding="latin1")
-        documents = loader.load()
+    # Choose the source file
+    source_path = "InsuranceAct.pdf"  # or "mediumblog1.txt"
+
+    # Load file (PDF or text) with proper handling
+    if source_path.lower().endswith(".pdf"):
+        loader = PyPDFLoader(source_path)
+        documents = loader.load()  # one Document per page
+    else:
+        try:
+            loader = TextLoader(source_path, encoding="utf-8")
+            documents = loader.load()
+        except UnicodeDecodeError:
+            loader = TextLoader(source_path, encoding="latin1")
+            documents = loader.load()
 
     print(f"Loaded {len(documents)} document(s)")
 
@@ -53,7 +59,7 @@ if __name__ == "__main__":
 
     splitter = CharacterTextSplitter(
         separator="\n",
-        chunk_size=800,
+        chunk_size=1000,
         chunk_overlap=100,
         length_function=len,
     )
@@ -72,8 +78,8 @@ if __name__ == "__main__":
     )
 
     # Pinecone settings
-    pinecone_api_key = get_env("PINECONE_API_KEY")
-    index_name = get_env("INDEX_NAME")
+    pinecone_api_key = get_env("PINECONE_API_KEY2")
+    index_name = get_env("INDEX_NAME2")
 
     # Fetch index metadata to verify dimension BEFORE ingestion
     try:
