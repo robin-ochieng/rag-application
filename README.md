@@ -156,3 +156,55 @@ If you have any questions or need help getting started, please open an issue or 
 ---
 
 ⭐ **Star this repository if you find it helpful!**
+
+## 🚢 Deploying the API to Render
+
+This repo includes a Dockerfile and a `render.yaml` for deploying the FastAPI backend.
+
+### 1) Create a new Web Service
+- Go to https://dashboard.render.com and click "New" → "Web Service".
+- Choose "Build and deploy from a Git repository" and select this repo.
+- Render will auto-detect Docker via the `Dockerfile`.
+
+### 2) Configure service settings
+- Name: `insurance-act-rag-api`
+- Region/Plan: choose your preferred region and the Free plan (as in `render.yaml`).
+- Health Check Path: `/healthz`
+
+### 3) Environment variables
+Add the following Environment Variables in the Render dashboard:
+- `OPENAI_API_KEY` (Secret) — your OpenAI API key
+- `PINECONE_API_KEY2` (Secret) — your Pinecone API key
+- `INDEX_NAME2` — your Pinecone index name
+- `PUBLIC_CLIENT_ORIGIN` — the exact URL of your frontend (e.g., `https://your-frontend-domain.com`). Use `*` only for local testing.
+- `BACKEND_API_KEY` (Secret, optional) — if set, all requests must include `X-API-KEY: <value>`.
+
+Alternatively, connect `render.yaml` as a Blueprint and Render will prompt for missing variables with `sync: false`.
+
+### 4) Deploy
+- Click "Create Web Service". Render builds the image and deploys it.
+- After deploy, visit `https://<your-service>.onrender.com/healthz` to verify.
+- POST `https://<your-service>.onrender.com/chat` with JSON `{ "message": "..." }` to query the RAG. If `BACKEND_API_KEY` is set, include header `X-API-KEY`.
+
+### Local Docker test (optional)
+```bash
+docker build -t insurance-act-rag-api:local .
+docker run --rm -p 8080:8080 --env-file .env insurance-act-rag-api:local
+curl -s http://localhost:8080/healthz
+curl -s -X POST http://localhost:8080/chat -H "content-type: application/json" -d '{"message":"What is the scope of the Insurance Act?"}'
+
+## 🔒 Security & Limits
+
+- CORS is locked to `PUBLIC_CLIENT_ORIGIN`.
+- Optional header auth via `BACKEND_API_KEY` and `X-API-KEY` header.
+- Rate limiting: 10 requests/min per client IP (SlowAPI).
+
+Example with API key header:
+
+```bash
+curl -s -X POST http://localhost:8080/chat \
+   -H "content-type: application/json" \
+   -H "X-API-KEY: $BACKEND_API_KEY" \
+   -d '{"message":"Summarize the Insurance Act"}'
+```
+```

@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: insurance-act-rag-api
+    env: docker
+    plan: free
+    autoDeploy: true
+    healthCheckPath: /healthz
+    envVars:
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: PINECONE_API_KEY2
+        sync: false
+      - key: INDEX_NAME2
+        sync: false
+      - key: PUBLIC_CLIENT_ORIGIN
+        value: https://your-frontend-domain.com
+      - key: BACKEND_API_KEY
+        sync: false
