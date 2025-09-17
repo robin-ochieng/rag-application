@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, type FormEvent, type ChangeEvent } from "react";
+import { useState, type FormEvent, type ChangeEvent } from "react";
 
 type Source = { snippet?: string; metadata?: Record<string, any> };
 
@@ -11,6 +11,9 @@ export default function ChatPage() {
   const apiBase =
     (globalThis as any)?.process?.env?.NEXT_PUBLIC_API_BASE ||
     "http://localhost:8080";
+  const apiKey = (globalThis as any)?.process?.env?.NEXT_PUBLIC_API_KEY as
+    | string
+    | undefined;
 
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -21,7 +24,10 @@ export default function ChatPage() {
     try {
       const res = await fetch(`${apiBase}/chat`, {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: {
+          "content-type": "application/json",
+          ...(apiKey ? { "X-API-KEY": apiKey } : {}),
+        },
         body: JSON.stringify({ message }),
       });
       const data = await res.json();

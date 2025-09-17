@@ -7,3 +7,5 @@ langchain-pinecone
 pinecone-client
 pydantic
 slowapi
+langchain-community
+pypdf
