@@ -9,3 +9,5 @@ pydantic
 slowapi
 langchain-community
 pypdf
+gradio
+shiny

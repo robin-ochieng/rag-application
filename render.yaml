@@ -16,3 +16,33 @@ services:
         value: https://your-frontend-domain.com
       - key: BACKEND_API_KEY
         sync: false
+  - type: web
+    name: insurance-act-gradio
+    env: docker
+    plan: free
+    autoDeploy: true
+    dockerfilePath: Dockerfile.gradio
+    envVars:
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: PINECONE_API_KEY2
+        sync: false
+      - key: INDEX_NAME2
+        sync: false
+      - key: PORT
+        value: 7860
+  - type: web
+    name: insurance-act-shiny
+    env: docker
+    plan: free
+    autoDeploy: true
+    dockerfilePath: Dockerfile.shiny
+    envVars:
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: PINECONE_API_KEY2
+        sync: false
+      - key: INDEX_NAME2
+        sync: false
+      - key: PORT
+        value: 7861

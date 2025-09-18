@@ -29,29 +29,15 @@ A comprehensive course project for learning to develop intelligent AI agents usi
 ## 🚀 Quick Start
 
 1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/robin-ochieng/langchain-langgraph-projects.git
-   cd langchain-langgraph-projects
    ```
 
-2. **Set up the environment:**
-   ```bash
-   # UV will automatically create a virtual environment
    uv sync
    ```
 
-3. **Configure environment variables:**
-   ```bash
-   # Copy the example environment file
-   cp .env.example .env
-   
    # Edit .env and add your API keys
    # OPENAI_API_KEY=your_openai_api_key_here
    ```
 
-4. **Run the main application:**
-   ```bash
-   uv run main.py
    ```
 
 5. **Start Jupyter for interactive development:**
@@ -62,9 +48,6 @@ A comprehensive course project for learning to develop intelligent AI agents usi
 ## 📁 Project Structure
 
 ```
-langchain-langgraph-projects/
-├── main.py                 # Main entry point
-├── src/                    # Source code modules
 ├── notebooks/              # Jupyter notebooks with examples
 ├── examples/               # Standalone example scripts
 ├── pyproject.toml          # Project configuration and dependencies
@@ -79,14 +62,8 @@ langchain-langgraph-projects/
 ### 1. LangChain Basics
 - Setting up LangChain
 - Working with LLMs and Chat Models
-- Prompt Templates and Chains
-- Memory and Context Management
-
 ### 2. LangGraph Workflows
 - Building State Machines
-- Creating Multi-Agent Systems
-- Workflow Orchestration
-- Error Handling and Retry Logic
 
 ### 3. AI Agent Development
 - Agent Architecture Patterns
@@ -100,6 +77,26 @@ langchain-langgraph-projects/
 
 ```bash
 # Add a new dependency
+## Deploying the Gradio UI Online
+
+### Render (Blueprint)
+
+This repo includes a `render.yaml` that defines two web services: the FastAPI backend and a Gradio UI.
+
+1. Push your changes to GitHub.
+2. In Render, create a new Blueprint from this repository.
+3. Add missing environment variables as protected secrets for both services:
+    - `OPENAI_API_KEY`, `PINECONE_API_KEY2`, `INDEX_NAME2` (required)
+    - `PUBLIC_CLIENT_ORIGIN` and `BACKEND_API_KEY` (backend optional)
+4. Deploy. Render will build two services:
+    - `insurance-act-rag-api` (FastAPI)
+    - `insurance-act-gradio` (Gradio, served on port `7860`)
+
+The Gradio service will get a public URL like `https://insurance-act-gradio.onrender.com` that you can share.
+
+### Google Cloud Run (alternative)
+
+```powershell
 uv add package-name
 
 # Add development dependency
@@ -107,6 +104,13 @@ uv add --dev package-name
 ```
 
 ### Running Tests
+
+
+### Hugging Face Spaces (alternative)
+
+1. Create a new Space (Gradio) and point it to this repo or upload `gradio_app.py` and `requirements.txt`.
+2. Set Space Secrets: `OPENAI_API_KEY`, `PINECONE_API_KEY2`, `INDEX_NAME2`.
+3. The Space URL is public by default and can be shared with colleagues.
 
 ```bash
 # Run tests (when test suite is added)
