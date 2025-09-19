@@ -35,7 +35,7 @@ _origins_raw = os.getenv("PUBLIC_CLIENT_ORIGIN", "*")
 ALLOWED_ORIGINS = [o.strip() for o in _origins_raw.split(",") if o.strip()]
 ORIGIN_REGEX_STR = os.getenv("PUBLIC_CLIENT_ORIGIN_REGEX")
 ORIGIN_REGEX = re.compile(ORIGIN_REGEX_STR) if ORIGIN_REGEX_STR else None
-BACKEND_API_KEY = os.getenv("BACKEND_API_KEY")
+# BACKEND_API_KEY = os.getenv("BACKEND_API_KEY")
 
 # Configure basic structured logging
 logging.basicConfig(
