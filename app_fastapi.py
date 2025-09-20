@@ -26,16 +26,27 @@ except Exception:  # pragma: no cover - optional dependency fallback
         raise RateLimitExceeded()
     _SLOWAPI_AVAILABLE = False
 
-from rag_core import ask
+TEST_MODE = os.getenv("TEST_MODE") in {"1", "true", "True", "yes", "on"}
+
+# In test mode, avoid importing heavy RAG deps and return a fast stub
+if TEST_MODE:
+    def ask(q: str) -> Dict[str, Any]:
+        return {"answer": f"Echo: {q}", "sources": []}
+else:
+    from rag_core import ask
 
 # Load .env so API-level env vars (e.g., PUBLIC_CLIENT_ORIGIN) are available
 load_dotenv()
 
 _origins_raw = os.getenv("PUBLIC_CLIENT_ORIGIN", "*")
 ALLOWED_ORIGINS = [o.strip() for o in _origins_raw.split(",") if o.strip()]
+# If wildcard is configured, use safe localhost defaults in dev
+if ALLOWED_ORIGINS == ["*"]:
+    ALLOWED_ORIGINS = ["http://localhost:3000", "http://127.0.0.1:3000"]
 ORIGIN_REGEX_STR = os.getenv("PUBLIC_CLIENT_ORIGIN_REGEX")
 ORIGIN_REGEX = re.compile(ORIGIN_REGEX_STR) if ORIGIN_REGEX_STR else None
-# BACKEND_API_KEY = os.getenv("BACKEND_API_KEY")
+BACKEND_API_KEY = os.getenv("BACKEND_API_KEY")
+DEMO_MODE = False  # Demo mode disabled
 
 # Configure basic structured logging
 logging.basicConfig(
@@ -64,10 +75,10 @@ logger.info(
     },
 )
 
-# Rate limiting: 10 requests/minute per client IP (optional if slowapi available)
+# Rate limiting: apply only to specific endpoints
 limiter = None
 if _SLOWAPI_AVAILABLE:
-    limiter = Limiter(key_func=get_remote_address, default_limits=["10/minute"])  # type: ignore[arg-type]
+    limiter = Limiter(key_func=get_remote_address)  # no default global limits
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
     app.add_middleware(SlowAPIMiddleware)  # type: ignore[arg-type]
@@ -99,9 +110,48 @@ async def root() -> Dict[str, Any]:
 
 @app.get("/healthz")
 async def healthz(x_api_key: str | None = Header(default=None, alias="X-API-KEY")) -> Dict[str, Any]:
+    # Keep open for dev; if you enforce a key, comment next two lines and uncomment the check.
+    return {"ok": True}
+    # if BACKEND_API_KEY and x_api_key != BACKEND_API_KEY:
+    #     raise HTTPException(status_code=401, detail="Unauthorized")
+
+
+class AskRequest(BaseModel):
+    q: str
+
+
+@app.post("/ask")
+@limit("60/minute")
+async def ask_route(
+    req: AskRequest,
+    request: Request,
+    x_api_key: str | None = Header(default=None, alias="X-API-KEY"),
+) -> Dict[str, Any]:
     if BACKEND_API_KEY and x_api_key != BACKEND_API_KEY:
         raise HTTPException(status_code=401, detail="Unauthorized")
-    return {"ok": True}
+    start = time.perf_counter()
+    try:
+        try:
+            result = ask(req.q)
+            return {
+                "answer": result.get("answer", ""),
+                "sources": result.get("sources", []),
+            }
+        except Exception as e:  # return structured JSON error
+            logger.exception("ask failed")
+            raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        latency_ms = (time.perf_counter() - start) * 1000
+        size = len(req.q or "")
+        logger.info(
+            "ask request processed",
+            extra={
+                "path": str(request.url.path),
+                "client": request.client.host if request.client else None,
+                "msg_size": size,
+                "latency_ms": round(latency_ms, 2),
+            },
+        )
 
 
 @app.post("/chat")

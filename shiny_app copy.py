@@ -1,88 +1,36 @@
 import os
-import json
-import shutil
-from datetime import datetime
 from typing import List, Dict, Any
 
 from dotenv import load_dotenv
 from shiny import App, render, ui
-from shiny import reactive
 
 from rag_core import ask
 
 load_dotenv()
 
-# Ensure the primary PDF is available under Shiny's static dir (www/)
-def ensure_static_pdf():
-    try:
-        dest_dir = os.path.join(os.getcwd(), "www")
-        os.makedirs(dest_dir, exist_ok=True)
-        src_candidates = [
-            os.path.join(os.getcwd(), "InsuranceAct.pdf"),
-            os.path.join(os.getcwd(), "static", "InsuranceAct.pdf"),
-        ]
-        dst = os.path.join(dest_dir, "InsuranceAct.pdf")
-        for src in src_candidates:
-            if os.path.exists(src):
-                if not os.path.exists(dst):
-                    shutil.copyfile(src, dst)
-                break
-    except Exception:
-        # Non-fatal: if copy fails, citations may still work if source is remote
-        pass
 
-ensure_static_pdf()
-
-
-def _build_citation_href(meta: Dict[str, Any]) -> str:
-    page = meta.get("page") or meta.get("page_number")
-    page_anchor = f"#page={page}" if page else ""
-    if isinstance(meta.get("source"), str) and meta["source"].startswith("http"):
-        return meta["source"] + page_anchor
-    fp = meta.get("file_path") or meta.get("title")
-    if isinstance(fp, str):
-        # Attempt to serve from ./www or ./static if present
-        for base in ("www", "static"):
-            candidate = os.path.join(base, os.path.basename(fp))
-            if os.path.exists(candidate):
-                return f"/{base}/{os.path.basename(fp)}{page_anchor}"
-        return os.path.basename(fp) + page_anchor
-    return "#"
-
-def _format_sources_html(sources: List[Dict[str, Any]]) -> ui.Tag:
+def _format_sources(sources: List[Dict[str, Any]]) -> str:
     if not sources:
-        return ui.div("📭 No specific sources found.", class_="citations-empty")
-    items: List[ui.Tag] = []
+        return "📭 No specific sources found."
+    
+    lines: List[str] = []
     for i, s in enumerate(sources, 1):
         meta = s.get("metadata", {}) or {}
-        href = _build_citation_href(meta)
-        label_parts: List[str] = []
-        for k in ("title", "file_path", "source", "page", "page_number"):
+        parts = []
+        
+        # Extract key metadata with better formatting
+        for k, icon in [("title", "📄"), ("file_path", "📁"), ("source", "🔗"), ("page", "📃"), ("page_number", "📃")]:
             if meta.get(k):
-                label_parts.append(f"{k.replace('_',' ').title()}: {meta[k]}")
-        snippet = s.get("snippet") or s.get("page_content") or "(no content preview)"
-        if len(snippet) > 240:
-            snippet = snippet[:237] + "..."
-        items.append(
-            ui.tags.li(
-                [
-                    ui.a(f"{i}. {snippet}", href=href, target="_blank", class_="citation-link"),
-                    ui.div("; ".join(label_parts), class_="citation-meta")
-                ],
-                class_="citation-item"
-            )
-        )
-    return ui.div([ui.div("Citations:", class_="citations-title"), ui.tags.ul(items, class_="citations-list")])
-
-def _followup_suggestions(answer: str) -> List[str]:
-    if not answer:
-        return []
-    base = [
-        "What are the limitations or exceptions?",
-        "Can you cite the exact section?",
-        "How does this compare to related provisions?",
-    ]
-    return base[:3]
+                parts.append(f"{icon} {k.replace('_', ' ').title()}: {meta[k]}")
+        
+        snippet = s.get("snippet") or s.get("page_content", "(no content preview)")
+        if len(snippet) > 200:
+            snippet = snippet[:200] + "..."
+        
+        metadata_info = "\n   ".join(parts) if parts else "📋 No metadata available"
+        lines.append(f"🔸 **Source {i}:**\n   📝 Content: {snippet}\n   {metadata_info}")
+    
+    return "\n\n".join(lines)
 
 
 # UI
@@ -306,38 +254,110 @@ app_ui = ui.page_fluid(
             transform: translateY(-1px) scale(0.98) !important;
         }
         
-        /* Chat Transcript */
-        .chat-transcript {
+        /* Results Grid */
+        .results-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+            margin-top: 2rem;
+        }
+        
+        @media (max-width: 968px) {
+            .results-grid {
+                grid-template-columns: 1fr;
+                gap: 1.5rem;
+            }
+        }
+        
+        /* Result Sections */
+        .result-section {
             background: rgba(255, 255, 255, 0.98);
             border-radius: 24px;
+            padding: clamp(1.25rem, 3vw, 2rem);
+            margin-bottom: 1.5rem;
+            box-shadow: 
+                0 15px 35px rgba(31, 41, 55, 0.08),
+                0 3px 10px rgba(31, 41, 55, 0.03);
             border: 1px solid rgba(226, 232, 240, 0.8);
-            padding: 1rem;
-            max-height: 60vh;
-            overflow-y: auto;
-            box-shadow: 0 15px 35px rgba(31,41,55,0.08), 0 3px 10px rgba(31,41,55,0.03);
-        }
-        .msg-row { display: flex; margin: 12px 0; }
-        .msg-row.user { justify-content: flex-end; }
-        .msg-row.assistant { justify-content: flex-start; }
-        .bubble {
-            max-width: 75%;
-            padding: 14px 16px;
-            border-radius: 16px;
             position: relative;
-            border: 1px solid #e5e7eb;
-            background: linear-gradient(145deg, #f8fafc, #f1f5f9);
+            transition: all 0.3s ease;
+            overflow: hidden;
         }
-        .msg-row.user .bubble { background: #eef2ff; border-color: #c7d2fe; }
-        .msg-meta { font-size: 0.8rem; color: #6b7280; margin-top: 6px; display:flex; gap:10px; align-items:center; }
-        .copy-btn { cursor: pointer; color: #4f46e5; }
-        .citations-title { font-weight: 700; margin-top: 10px; }
-        .citations-list { margin: 6px 0 0 18px; padding: 0; }
-        .citation-item { margin: 6px 0; }
-        .citation-link { text-decoration: none; color: #111827; }
-        .citation-link:hover { text-decoration: underline; color: #4f46e5; }
-        .chips { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
-        .chip { background:#f3f4f6; border:1px solid #e5e7eb; padding:6px 10px; border-radius:999px; cursor:pointer; font-size:0.9rem; }
-        .chip:hover { background:#e5e7eb; }
+        
+        .result-section::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, var(--brand-1), var(--brand-2), var(--brand-3));
+            border-radius: 24px 24px 0 0;
+        }
+        
+        .result-section:hover {
+            transform: translateY(-4px);
+            box-shadow: 
+                0 25px 50px rgba(31, 41, 55, 0.12),
+                0 8px 25px rgba(31, 41, 55, 0.06);
+        }
+        
+        /* Result Headers */
+        .result-header {
+            color: var(--ink-2);
+            font-weight: 800;
+            font-size: 1.3rem;
+            margin-bottom: 1.25rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding-top: 0.5rem;
+        }
+        
+        .result-header .emoji {
+            font-size: 1.75rem;
+            filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1));
+        }
+        
+        /* Content Areas */
+        .result-content, #answer, #sources {
+            background: linear-gradient(145deg, #f8fafc, #f1f5f9) !important;
+            border: 1px solid #e2e8f0 !important;
+            border-radius: 18px !important;
+            padding: 1.5rem !important;
+            font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Roboto Mono', monospace !important;
+            font-size: 0.98rem !important;
+            line-height: 1.8 !important;
+            white-space: pre-wrap !important;
+            word-wrap: break-word !important;
+            max-height: 480px;
+            overflow-y: auto;
+            transition: all 0.3s ease !important;
+        }
+        
+        .result-content:hover, #answer:hover, #sources:hover {
+            border-color: var(--brand-1) !important;
+            box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1) !important;
+        }
+        
+        /* Custom Scrollbar */
+        .result-content::-webkit-scrollbar, #answer::-webkit-scrollbar, #sources::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        .result-content::-webkit-scrollbar-track, #answer::-webkit-scrollbar-track, #sources::-webkit-scrollbar-track {
+            background: #f1f5f9;
+            border-radius: 10px;
+        }
+        
+        .result-content::-webkit-scrollbar-thumb, #answer::-webkit-scrollbar-thumb, #sources::-webkit-scrollbar-thumb {
+            background: linear-gradient(135deg, var(--brand-1), var(--brand-2));
+            border-radius: 10px;
+        }
+        
+        .result-content::-webkit-scrollbar-thumb:hover, #answer::-webkit-scrollbar-thumb:hover, #sources::-webkit-scrollbar-thumb:hover {
+            background: linear-gradient(135deg, var(--brand-2), var(--brand-3));
+        }
         
         /* Footer */
         .footer {
@@ -454,19 +474,82 @@ app_ui = ui.page_fluid(
             )
         ),
         
-        # Transcript
+        # Results section
         ui.div(
-            {"class": "chat-transcript", "id": "chat-transcript"},
-            ui.output_ui("transcript")
+            {"class": "results-grid"},
+            
+            # Answer section
+            ui.div(
+                {"class": "result-section"},
+                ui.div(
+                    {"class": "result-header"},
+                    ui.span("💡", {"class": "emoji"}),
+                    ui.span("Answer")
+                ),
+                                                ui.output_text_verbatim("answer", placeholder=True),
+                                ui.tags.script("""
+                                // Ensure form controls work properly
+                                document.addEventListener('DOMContentLoaded', function() {
+                                    function ensureTextareaWorks() {
+                                        // Apply styling to output elements
+                                        document.querySelectorAll('#answer, #sources').forEach(el => {
+                                            el.classList.add('result-content');
+                                        });
+                                        
+                                        // Fix textarea functionality
+                                        const textarea = document.getElementById('question');
+                                        if (textarea) {
+                                            // Remove any attributes that might block input
+                                            textarea.removeAttribute('readonly');
+                                            textarea.removeAttribute('disabled');
+                                            textarea.removeAttribute('contenteditable');
+                                            
+                                            // Ensure proper styling and behavior
+                                            textarea.style.pointerEvents = 'auto';
+                                            textarea.style.userSelect = 'text';
+                                            textarea.style.cursor = 'text';
+                                            textarea.style.webkitUserSelect = 'text';
+                                            textarea.style.mozUserSelect = 'text';
+                                            
+                                            // Force focus capability
+                                            textarea.tabIndex = 0;
+                                            
+                                            // Test if textarea is working
+                                            console.log('Textarea setup complete:', {
+                                                id: textarea.id,
+                                                disabled: textarea.disabled,
+                                                readonly: textarea.readOnly,
+                                                value: textarea.value
+                                            });
+                                        }
+                                    }
+                                    
+                                    // Run immediately and after delays to handle Shiny's rendering
+                                    ensureTextareaWorks();
+                                    setTimeout(ensureTextareaWorks, 100);
+                                    setTimeout(ensureTextareaWorks, 500);
+                                    setTimeout(ensureTextareaWorks, 1000);
+                                    setTimeout(ensureTextareaWorks, 2000);
+                                    
+                                    // Re-run when Shiny updates
+                                    document.addEventListener('shiny:value', ensureTextareaWorks);
+                                    document.addEventListener('shiny:bound', ensureTextareaWorks);
+                                });
+                                """)
+            ),
+            
+            # Sources section  
+            ui.div(
+                {"class": "result-section"},
+                ui.div(
+                    {"class": "result-header"},
+                    ui.span("📚", {"class": "emoji"}),
+                    ui.span("Sources & References")
+                ),
+                ui.output_text_verbatim("sources", placeholder=True)
+            )
         ),
         
-        # Controls
-        ui.div(
-            {"class": "mt-4 flex justify-between items-center"},
-            ui.input_action_button("clear", "🧹 Clear Chat", class_="ask-button", style="background:#ef4444;min-width:160px;"),
-            ui.div()
-        ),
-
         # Enhanced Footer
         ui.div(
             {"class": "footer"},
@@ -486,118 +569,48 @@ app_ui = ui.page_fluid(
 
 
 def server(input, output, session):
-    history = reactive.Value([])
-
-    def _append_message(role: str, content: str, sources: List[Dict[str, Any]] | None = None, followups: List[str] | None = None, pending: bool = False):
-        current = list(history.get())
-        current.append({
-            "id": f"m{len(current)+1}",
-            "role": role,
-            "content": content,
-            "sources": sources or [],
-            "followups": followups or [],
-            "pending": pending,
-            "time": datetime.now().strftime("%H:%M")
-        })
-        history.set(current)
-
-    def _update_last_assistant(content: str, sources: List[Dict[str, Any]]):
-        current = list(history.get())
-        for i in range(len(current)-1, -1, -1):
-            if current[i]["role"] == "assistant":
-                current[i]["content"] = content
-                current[i]["sources"] = sources
-                current[i]["followups"] = _followup_suggestions(content)
-                current[i]["pending"] = False
-                break
-        history.set(current)
-
-    @reactive.effect
-    @reactive.event(input.clear)
-    def _on_clear():
-        history.set([])
-
-    @reactive.effect
-    @reactive.event(input.ask)
-    def _on_ask():
+    
+    @output
+    @render.text
+    def answer():
+        if input.ask() == 0:
+            return "👋 Welcome! Ask me anything about the Insurance Act and I'll provide detailed answers with sources.\n\nTry questions like:\n• What are the key provisions of the Insurance Act?\n• What penalties apply for non-compliance?\n• How are insurance companies regulated?"
+        
         q = (input.question() or "").strip()
         if not q:
-            return
-        _append_message("user", q)
-        _append_message("assistant", "Thinking…", pending=True)
+            return "❓ Please enter a question in the text box above, then click 'Ask Question'."
+        
         try:
+            print(f"DEBUG: Processing question: '{q}'")
             result = ask(q)
-            ans = result.get("answer", "")
-            sources = result.get("sources", []) or []
-            _update_last_assistant(ans, sources)
+            answer_text = result.get("answer", "❌ No answer received from the system.")
+            print(f"DEBUG: Got answer with length: {len(answer_text)}")
+            return f"💡 {answer_text}"
         except Exception as e:
-            _update_last_assistant(f"Error: {e}", [])
+            print(f"DEBUG: Error occurred: {e}")
+            return f"❌ Error processing your question:\n\n{str(e)}\n\nPlease check your environment variables and try again."
 
     @output
-    @render.ui
-    def transcript():
-        msgs = history.get()
-        if not msgs:
-            return ui.div(
-                ui.div(
-                    {"class": "msg-row assistant"},
-                    ui.div(
-                        [
-                            ui.div("👋 Welcome! Ask about the Insurance Act and I'll answer with citations.", class_=""),
-                            ui.div("", class_="msg-meta")
-                        ],
-                        class_="bubble"
-                    )
-                )
-            )
-
-        ui_rows: List[ui.Tag] = []
-        for m in msgs:
-            role = m.get("role")
-            content = m.get("content") or ""
-            pending = m.get("pending")
-            srcs = m.get("sources") or []
-            follows = m.get("followups") or []
-            time_str = m.get("time") or ""
-
-            bubble_children: List[ui.Tag] = [ui.div(content if not pending else "⏳ " + content)]
-            if role == "assistant" and srcs:
-                bubble_children.append(_format_sources_html(srcs))
-            if role == "assistant" and follows:
-                chips = []
-                for text in follows:
-                    js = (
-                        f"const t={json.dumps(text)};"
-                        "document.getElementById('question').value=t;"
-                        "Shiny.setInputValue('ask', Date.now());"
-                    )
-                    chips.append(ui.span(text, class_="chip", onclick=js))
-                bubble_children.append(ui.div(chips, class_="chips"))
-            bubble_children.append(ui.div([
-                ui.span(time_str),
-                ui.span("Copy", class_="copy-btn", onclick=f"navigator.clipboard.writeText({json.dumps(content)});")
-            ], class_="msg-meta"))
-
-            ui_rows.append(
-                ui.div(
-                    {"class": f"msg-row {role}"},
-                    ui.div(bubble_children, class_="bubble")
-                )
-            )
-
-        # Autoscroll on render
-        return ui.div([
-            ui.div(ui_rows),
-            ui.tags.script(
-                """
-                (function(){
-                  const el = document.getElementById('chat-transcript');
-                  if (!el) return;
-                  el.scrollTop = el.scrollHeight;
-                })();
-                """
-            )
-        ])
+    @render.text
+    def sources():
+        if input.ask() == 0:
+            return "📚 Sources and references from the Insurance Act documents will appear here after you ask a question.\n\nThis helps you verify the information and explore the original documents."
+        
+        q = (input.question() or "").strip()
+        if not q:
+            return "🔍 No sources available - please ask a question first."
+        
+        try:
+            result = ask(q)
+            sources_list = result.get("sources", [])
+            if not sources_list:
+                return "📝 No specific sources found for this query, but the answer is based on the Insurance Act knowledge base."
+            
+            formatted_sources = _format_sources(sources_list)
+            print(f"DEBUG: Got {len(sources_list)} sources")
+            return f"📖 Found {len(sources_list)} relevant source(s):\n\n{formatted_sources}"
+        except Exception as e:
+            return f"⚠️ Error retrieving sources:\n{type(e).__name__}: {str(e)}\n\nPlease check your configuration:\n• OPENAI_API_KEY\n• PINECONE_API_KEY2\n• INDEX_NAME2"
 
 
 app = App(app_ui, server)
