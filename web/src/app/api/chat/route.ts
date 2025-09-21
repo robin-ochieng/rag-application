@@ -25,10 +25,8 @@ export async function GET() {
         { status: r2.ok ? 200 : r2.status }
       );
     } catch (e2: any) {
-      return NextResponse.json(
-        { ok: false, backend: BASE, alt: ALT, error: e2?.message || e1?.message || String(e2) },
-        { status: 500 }
-      );
+      const error = e2?.message || e1?.message || String(e2);
+      return NextResponse.json({ ok: false, backend: BASE, alt: ALT, error }, { status: 500 });
     }
   }
 }
@@ -59,10 +57,8 @@ export async function POST(req: Request) {
       if (!r2.ok) return NextResponse.json({ error: await r2.text(), backend: ALT, fallbackFrom: BASE }, { status: r2.status });
       return NextResponse.json(await r2.json());
     } catch (e2: any) {
-      return NextResponse.json(
-        { error: e2?.message ?? e1?.message ?? "proxy error", backend: BASE, altTried: ALT },
-        { status: 500 }
-      );
+      const error = e2?.message ?? e1?.message ?? "proxy error";
+      return NextResponse.json({ error, backend: BASE, altTried: ALT }, { status: 500 });
     }
   }
 }

@@ -4,14 +4,16 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:all": "concurrently \"cross-env API_URL=http://127.0.0.1:8000 next dev -H 127.0.0.1 -p 3001\" \"node ./scripts/start-backend.mjs\"",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
     "test:web": "node ../tests/web/run_proxy_tests.mjs",
-  "test:e2e": "node ../tests/e2e/run_e2e.mjs"
+    "test:e2e": "node ../tests/e2e/run_e2e.mjs"
   },
   "dependencies": {
     "next": "15.5.3",
+    "next-themes": "^0.4.6",
     "react": "19.1.0",
     "react-dom": "19.1.0"
   },
@@ -21,6 +23,8 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "concurrently": "^9.2.1",
+    "cross-env": "^7.0.3",
     "eslint": "^9",
     "eslint-config-next": "15.5.3",
     "playwright": "^1.55.0",

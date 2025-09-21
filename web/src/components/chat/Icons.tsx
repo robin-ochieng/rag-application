@@ -30,3 +30,13 @@ export function CopyIcon({ size = 16, ...props }: Props) {
     </svg>
   );
 }
+
+export function DotsIcon({ size = 16, ...props }: Props) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" {...props}>
+      <circle cx="5" cy="12" r="1.6" />
+      <circle cx="12" cy="12" r="1.6" />
+      <circle cx="19" cy="12" r="1.6" />
+    </svg>
+  );
+}

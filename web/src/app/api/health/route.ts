@@ -18,12 +18,10 @@ export async function GET() {
     try {
       const res2 = await fetch(`${alt}/healthz`, { cache: "no-store" });
       const data2 = await res2.json().catch(() => ({}));
-      return NextResponse.json(
-        { ok: res2.ok, backend: alt, fallbackFrom: backend, data: data2 },
-        { status: res2.ok ? 200 : res2.status }
-      );
+      return NextResponse.json({ ok: res2.ok, backend: alt, fallbackFrom: backend, data: data2 }, { status: res2.ok ? 200 : res2.status });
     } catch (e2: any) {
-      return NextResponse.json({ ok: false, error: e2?.message || e1?.message || String(e2), backend, alt }, { status: 500 });
+      const error = e2?.message || e1?.message || String(e2);
+      return NextResponse.json({ ok: false, error, backend, alt }, { status: 500 });
     }
   }
 }

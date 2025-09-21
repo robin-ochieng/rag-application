@@ -1,6 +1,7 @@
 "use client";
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent, KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent, KeyboardEvent, type ChangeEvent } from "react";
 import { Citations, FollowUps, IconCluster, MessageCard, Skeleton } from "./chat/Card";
+import Composer from "@/components/chat/Composer";
 
 // Minimal message shape
 type Message = {
@@ -33,57 +34,11 @@ export default function ChatLayout() {
     return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   }
 
-  // Tiny status pill that pings the proxy health (GET /api/chat)
-  function StatusPill() {
-    const [state, setState] = useState<"checking" | "ok" | "warn">("checking");
-    const [backend, setBackend] = useState<string | undefined>(undefined);
-    const [last, setLast] = useState<string>("");
+  // Removed the old API status pill per new design
 
-    let inFlight = false;
-    const ping = async () => {
-      if (inFlight) return; // prevent overlapping polls
-      inFlight = true;
-      setState("checking");
-      try {
-        const res = await fetch("/api/chat", { cache: "no-store" });
-        const data = await res.json().catch(() => ({} as any));
-        if (res.ok && (data?.ok ?? true)) {
-          setState("ok");
-        } else {
-          setState("warn");
-        }
-        setBackend(data?.backend);
-      } catch (_e) {
-        setState("warn");
-      } finally {
-        setLast(timeNow());
-        inFlight = false;
-      }
-    };
-
-    useEffect(() => {
-      ping();
-      const id = setInterval(ping, 15000);
-      return () => clearInterval(id);
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
-
-    const dot = state === "ok" ? "bg-emerald-300" : state === "checking" ? "bg-amber-300" : "bg-amber-400";
-    const bg = state === "ok" ? "bg-emerald-500/80 text-white" : "bg-amber-500/80 text-black";
-    const label = state === "ok" ? "API: OK" : state === "checking" ? "API: Checking…" : "API: Unreachable";
-
-    return (
-      <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-medium border border-white/20 ${bg}`}>
-        <span className={`h-2 w-2 rounded-full ${dot}`} />
-        {label}
-        {backend ? <span className="opacity-70"> · {backend}</span> : null}
-        {last ? <span className="opacity-70"> · {last}</span> : null}
-      </span>
-    );
-  }
-
-  async function onSubmit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
+  async function onSubmit(e?: FormEvent<HTMLFormElement>) {
+    if (e) e.preventDefault();
+    if (loading) return; // prevent double-submit
     if (!q.trim()) return;
 
     const userMsg: Message = { role: "user", content: q, time: timeNow() };
@@ -96,38 +51,20 @@ export default function ChatLayout() {
     setLoading(true);
 
     try {
-      // Helper: perform POST with a single retry for transient "fetch failed" cases
-      const doPost = async (): Promise<{ data: any; status: number; ok: boolean }> => {
-        const res = await fetch(apiPath, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ q: userMsg.content }),
-          cache: "no-store",
-        });
-        let payload: any = {};
-        try {
-          payload = await res.json();
-        } catch (e: any) {
-          const txt = await res.text().catch(() => "");
-          payload = { answer: "", sources: [], error: txt || e?.message || `Invalid JSON (status ${res.status})` };
-        }
-        return { data: payload, status: res.status, ok: res.ok };
-      };
-
-      let result: { data: any; status: number; ok: boolean };
+      const res = await fetch(apiPath, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ q: userMsg.content }),
+        cache: "no-store",
+      });
+      let payload: any = {};
       try {
-        result = await doPost();
-      } catch (e1: any) {
-        // Retry once after a short delay on network error (e.g., HMR rebuilds)
-        await new Promise((r) => setTimeout(r, 500));
-        try {
-          result = await doPost();
-        } catch (e2: any) {
-          throw e2; // surface to outer catch
-        }
+        payload = await res.json();
+      } catch (e: any) {
+        const txt = await res.text().catch(() => "");
+        payload = { answer: "", sources: [], error: txt || e?.message || `Invalid JSON (status ${res.status})` };
       }
-
-      const { data, status, ok } = result;
+      const { data, status, ok } = { data: payload, status: res.status, ok: res.ok };
       setMsgs((prev: Message[]) => {
         const next = [...prev];
         const idx = next.findIndex((m) => m.role === "assistant" && !m.content && !m.error);
@@ -175,8 +112,7 @@ export default function ChatLayout() {
   function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      const form = (e.currentTarget as HTMLTextAreaElement).closest("form");
-      if (form) (form as HTMLFormElement).requestSubmit();
+      onSubmit();
     } else if (e.key === "Escape") {
       (e.currentTarget as HTMLTextAreaElement).blur();
     }
@@ -193,7 +129,7 @@ export default function ChatLayout() {
     if (!sources || sources.length === 0) return null;
     return (
       <details className="mt-2">
-        <summary className="cursor-pointer select-none text-sm/6 text-neutral-300 hover:text-white">Citations</summary>
+        <summary className="cursor-pointer select-none text-sm/6 text-[rgb(var(--muted-foreground))] hover:text-[rgb(var(--foreground))]">Citations</summary>
         <ul className="mt-2 space-y-2 list-disc pl-6">
           {sources.map((s, i) => {
             const meta = s.metadata || {};
@@ -216,37 +152,13 @@ export default function ChatLayout() {
   }
 
   return (
-  <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 py-6 flex flex-col gap-6">
-      {/* Live API status */}
-      <div className="sticky top-16 z-20 flex items-center justify-end">
-        <StatusPill />
-      </div>
-      {/* Input block */}
-      <form
-        id="chat-form"
-        onSubmit={onSubmit}
-        className="sticky top-20 z-10 bg-white/80 dark:bg-neutral-900/70 backdrop-blur rounded-[var(--radius-card)] border border-black/5 dark:border-white/10 shadow-[var(--shadow-card)] p-4"
-      >
-        <label htmlFor="q" className="block text-sm font-medium text-neutral-800 dark:text-neutral-200/90 mb-2">
-          Ask a question
-        </label>
-        <textarea
-          id="q"
-          value={q}
-          onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setQ(e.target.value)}
-          onKeyDown={onKeyDown}
-          placeholder="Ask about the Insurance Act…"
-          className="w-full rounded-xl border border-black/5 dark:border-white/10 bg-white/70 dark:bg-neutral-900/60 p-4 text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-500 dark:placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-violet-500/60 focus:border-transparent min-h-[120px]"
-        />
-        <div className="mt-3 flex items-center gap-3">
-          <button
-            type="submit"
-            disabled={loading}
-            aria-label="Ask question"
-            className="inline-flex items-center justify-center rounded-xl px-4 py-2 font-medium text-white bg-gradient-to-r from-violet-600 to-cyan-500 shadow hover:shadow-lg transition disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-violet-500/60"
-          >
-            {loading ? "Asking…" : "Ask Question"}
-          </button>
+    <div
+      className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 py-4 min-h-[calc(100vh-8rem)] grid grid-rows-[auto,1fr,auto] gap-4"
+    >
+      {/* Header row with controls */}
+      <div className="flex items-center justify-between">
+        <h1 className="text-base font-semibold text-[rgb(var(--foreground))]">Chat</h1>
+        <div className="flex items-center gap-2">
           <button
             type="button"
             aria-label="Start new chat"
@@ -254,7 +166,7 @@ export default function ChatLayout() {
               if (msgs.length > 0 && !confirm("Start a new chat? Current messages will be cleared.")) return;
               setMsgs([]);
             }}
-            className="inline-flex items-center justify-center rounded-xl px-3 py-2 text-sm bg-white/20 hover:bg-white/30 dark:bg-black/20 dark:hover:bg-black/30 border border-white/20 focus:outline-none focus:ring-2 focus:ring-violet-500/60"
+            className="h-9 rounded-md border border-[rgb(var(--border))] px-3 text-sm bg-[rgb(var(--accent))] text-[rgb(var(--accent-foreground))] hover:opacity-95 focus:outline-none focus:ring-2 focus:ring-[rgb(var(--ring))]"
           >
             New chat
           </button>
@@ -265,32 +177,35 @@ export default function ChatLayout() {
               if (msgs.length > 0 && !confirm("Clear all messages?")) return;
               setMsgs([]);
             }}
-            className="inline-flex items-center justify-center rounded-xl px-3 py-2 text-sm bg-white/20 hover:bg-white/30 dark:bg-black/20 dark:hover:bg-black/30 border border-white/20 focus:outline-none focus:ring-2 focus:ring-violet-500/60"
+            className="h-9 rounded-md border border-[rgb(var(--border))] px-3 text-sm bg-[rgb(var(--accent))] text-[rgb(var(--accent-foreground))] hover:opacity-95 focus:outline-none focus:ring-2 focus:ring-[rgb(var(--ring))]"
           >
             Clear chat
           </button>
         </div>
-      </form>
+      </div>
 
-      {/* Messages */}
-      <div ref={scrollRef} className="h-[calc(100vh-14rem)] overflow-y-auto px-1">
-        <div className="flex flex-col gap-4">
+      {/* Scrollable chat list as the only scrolling area */}
+      <div ref={scrollRef} className="overflow-y-auto px-1">
+        <div className="flex flex-col gap-4 pb-4">
           {msgs.length === 0 && (
-            <div className="text-neutral-300">No messages yet. Ask something to get started.</div>
+            <div className="text-[rgb(var(--muted-foreground))]">No messages yet. Ask something to get started.</div>
           )}
           {msgs.map((m, i) => {
             const isUser = m.role === "user";
             const hasError = !!m.error;
             return (
               <MessageCard key={i} side={isUser ? "right" : "left"}>
-                <div className="relative">
+                <div
+                  className="relative pr-[var(--bubble-actions-width)]"
+                  style={{ ["--bubble-actions-width" as any]: "3.25rem" }}
+                >
                   {!isUser && !hasError && (
                     <IconCluster onCopy={() => navigator.clipboard.writeText(m.content)} />
                   )}
                   <div className="whitespace-pre-wrap chat-content">
                     {m.content || (hasError ? `Error: ${m.error}` : <Skeleton />)}
                   </div>
-                  <div className="mt-2 text-xs text-neutral-500">{m.time}</div>
+                  <div className="mt-2 text-xs text-[rgb(var(--muted-foreground))]">{m.time}</div>
                   {!isUser && !hasError && (
                     <>
                       <Citations items={m.citations as any} />
@@ -303,6 +218,17 @@ export default function ChatLayout() {
           })}
         </div>
       </div>
+
+      {/* Bottom composer row */}
+      <Composer
+        id="chat-form"
+        value={q}
+        onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setQ(e.target.value)}
+        onKeyDown={onKeyDown}
+        onSubmit={onSubmit}
+        disabled={loading}
+        placeholder="Ask about the Insurance Act..."
+      />
     </div>
   );
 }

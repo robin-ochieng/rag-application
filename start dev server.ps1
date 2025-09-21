@@ -15,10 +15,10 @@ if (-not $scriptDir) { $scriptDir = (Get-Location).Path }
 $root = $scriptDir
 $web  = Join-Path $root "web"
 
-$host = "127.0.0.1"
+$listenHost = "127.0.0.1"
 $apiPort = 8000
 $webPort = 3001
-$apiBase = "http://$host:$apiPort"
+$apiBase = "http://${listenHost}:$apiPort"
 
 # Ensure Next proxy uses the same backend base.
 $env:API_URL = $apiBase
@@ -31,7 +31,7 @@ if (Test-Path $venvAct) { . $venvAct }
 # Start FastAPI (uvicorn) in background.
 Write-Host "Starting FastAPI (uvicorn) on $apiBase ..." -ForegroundColor Cyan
 $backend = Start-Process -FilePath "python" `
-  -ArgumentList @("-m","uvicorn","app_fastapi:app","--host",$host,"--port",$apiPort,"--reload") `
+  -ArgumentList @("-m","uvicorn","app_fastapi:app","--host",$listenHost,"--port",$apiPort,"--reload") `
   -WorkingDirectory $root -PassThru -WindowStyle Hidden
 
 try {
@@ -54,8 +54,8 @@ try {
 
   # Start Next.js on 127.0.0.1:3001
   Set-Location $web
-  Write-Host "Starting Next dev server on http://$host:$webPort ..." -ForegroundColor Cyan
-  npm run dev -- -H $host -p $webPort
+  Write-Host ("Starting Next dev server on http://{0}:{1} ..." -f $listenHost, $webPort) -ForegroundColor Cyan
+  npm run dev -- -H $listenHost -p $webPort
 }
 finally {
   # Cleanup backend when Next exits or on error.
