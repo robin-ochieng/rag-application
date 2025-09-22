@@ -75,44 +75,17 @@ A comprehensive course project for learning to develop intelligent AI agents usi
 
 ### Adding Dependencies
 
-```bash
-# Add a new dependency
-## Deploying the Gradio UI Online
-
-### Render (Blueprint)
-
-This repo includes a `render.yaml` that defines two web services: the FastAPI backend and a Gradio UI.
-
-1. Push your changes to GitHub.
-2. In Render, create a new Blueprint from this repository.
-3. Add missing environment variables as protected secrets for both services:
-    - `OPENAI_API_KEY`, `PINECONE_API_KEY2`, `INDEX_NAME2` (required)
-    - `PUBLIC_CLIENT_ORIGIN` and `BACKEND_API_KEY` (backend optional)
-4. Deploy. Render will build two services:
-    - `insurance-act-rag-api` (FastAPI)
-    - `insurance-act-gradio` (Gradio, served on port `7860`)
-
-The Gradio service will get a public URL like `https://insurance-act-gradio.onrender.com` that you can share.
-
-### Google Cloud Run (alternative)
-
 ```powershell
+# Add a new dependency (example)
 uv add package-name
 
-# Add development dependency
+# Add a development dependency
 uv add --dev package-name
 ```
 
 ### Running Tests
 
-
-### Hugging Face Spaces (alternative)
-
-1. Create a new Space (Gradio) and point it to this repo or upload `gradio_app.py` and `requirements.txt`.
-2. Set Space Secrets: `OPENAI_API_KEY`, `PINECONE_API_KEY2`, `INDEX_NAME2`.
-3. The Space URL is public by default and can be shared with colleagues.
-
-```bash
+```powershell
 # Run tests (when test suite is added)
 uv run pytest
 ```
@@ -229,20 +202,19 @@ This repo includes a GitHub Actions workflow that builds and publishes the image
 Instead of auto-building from the repo, you can point Render at the GHCR image:
 
 1. Create a Web Service on Render and choose “Docker” as environment.
-2. For Image, set:
-   `ghcr.io/<OWNER>/<REPO>/insurance-act-rag-api:latest`
+2. For Image, set: `ghcr.io/<OWNER>/<REPO>/insurance-act-rag-api:latest`
 3. Add environment variables as documented above.
 4. Under “Deploy Script”, leave default because the image already starts via `CMD`.
 5. Authentication: If your GHCR is private, provide a deploy key or a registry auth token; public images need no auth.
 
-Alternatively, you can let Render auto-build from this repo (as previously described) and ignore GHCR.
+Alternatively, you can let Render auto-build from this repo and ignore GHCR.
 ```
 
 ## 📥 Ingestion (Add Documents)
 
 - Put source files under `data/documents/` (subfolders OK). Supported: `.pdf`, `.txt`, `.md`.
 - The pipeline splits, deduplicates by content hash, and upserts to Pinecone with deterministic IDs.
-- Existing `InsuranceAct.pdf` is included automatically (from repo root or `www/`).
+  
 
 PowerShell quick start:
 
