@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState, type FormEvent, KeyboardEvent, type ChangeEvent } from "react";
-import { Citations, FollowUps, IconCluster, MessageCard, Skeleton } from "./chat/Card";
+import { FollowUps, IconCluster, MessageCard, Skeleton } from "./chat/Card";
+import CitationsDisclosure from "@/components/chat/CitationsDisclosure";
 import Composer from "@/components/chat/Composer";
 
 // Minimal message shape
@@ -65,7 +66,7 @@ export default function ChatLayout() {
         payload = { answer: "", sources: [], error: txt || e?.message || `Invalid JSON (status ${res.status})` };
       }
       const { data, status, ok } = { data: payload, status: res.status, ok: res.ok };
-      setMsgs((prev: Message[]) => {
+          setMsgs((prev: Message[]) => {
         const next = [...prev];
         const idx = next.findIndex((m) => m.role === "assistant" && !m.content && !m.error);
         if (idx >= 0) {
@@ -75,11 +76,15 @@ export default function ChatLayout() {
             : Array.isArray(data?.sources)
             ? (data.sources as any[]).map((s) => {
                 const meta = s?.metadata || {};
-                const label = meta.title || meta.file_path || meta.source || "Source";
-                const page = meta.page || meta.page_number;
-                const l = page ? `${label}#page=${page}` : label;
-                const href = meta.url || meta.href || "#";
-                return { label: l, href };
+                const rawSrc = (meta.source || meta.source_path || "") as string;
+                const norm = rawSrc.replace(/\\/g, "/");
+                const rawPage = (meta.page as number) || (meta.page_number as number) || undefined;
+                const pageNum = typeof rawPage === "number" && !Number.isNaN(rawPage) ? Math.max(1, Math.floor(rawPage)) : undefined;
+                const fileLabel = meta.file_name || (norm.split("/").pop() || "Source");
+                const pageSuffix = pageNum ? `#page=${pageNum}` : "";
+                const href = norm ? `/pdf?src=${encodeURIComponent(norm)}${pageSuffix}` : "#";
+                const label = pageNum ? `${fileLabel} (p. ${pageNum})` : fileLabel;
+                return { label, href };
               })
             : [];
           const base: Message = {
@@ -208,7 +213,7 @@ export default function ChatLayout() {
                   <div className="mt-2 text-xs text-[rgb(var(--muted-foreground))]">{m.time}</div>
                   {!isUser && !hasError && (
                     <>
-                      <Citations items={m.citations as any} />
+                      <CitationsDisclosure items={(m.citations as any) || []} />
                       <FollowUps items={m.followUps as any} onClick={submitFollowUp} />
                     </>
                   )}

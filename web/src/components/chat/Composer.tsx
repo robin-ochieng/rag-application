@@ -32,8 +32,8 @@ export default function Composer({ id, value, placeholder, disabled, onChange, o
         aria-label="Message composer"
       >
         <div className="relative rounded-[var(--radius-card)] border border-[rgb(var(--border))] bg-[rgb(var(--card))] shadow-[var(--shadow-card)]">
-          {/* Left send button */}
-          <div className="absolute left-2 top-2">
+          {/* Right send button */}
+          <div className="absolute right-2 top-2">
             <button
               type="submit"
               aria-label="Send message"
@@ -48,7 +48,7 @@ export default function Composer({ id, value, placeholder, disabled, onChange, o
               </svg>
             </button>
           </div>
-          <div className="pl-12 pr-3 py-2">
+          <div className="pl-3 pr-12 py-2">
             <label htmlFor="chat-input" className="sr-only">Chat input</label>
             <textarea
               id="chat-input"
