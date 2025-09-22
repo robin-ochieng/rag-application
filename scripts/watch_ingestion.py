@@ -1,3 +1,5 @@
+# pyright: reportMissingTypeStubs=false, reportMissingImports=false
+from typing import Any
 import os
 import time
 from pathlib import Path
@@ -49,13 +51,18 @@ class DocsEventHandler(FileSystemEventHandler):
         super().__init__()
         self.ingestor = ingestor
 
-    def on_any_event(self, event):
-        if event.is_directory:
+    def on_any_event(self, event: Any) -> None:
+        if getattr(event, "is_directory", False):
             return
         # Only react to supported extensions
-        p = Path(event.src_path)
+        src = getattr(event, "src_path", "")
+        try:
+            p = Path(src)
+        except Exception:
+            return
         if p.suffix.lower() in {".pdf", ".txt", ".md"}:
-            print(f"[watch] Change detected: {event.event_type} {p}")
+            ev_type = getattr(event, "event_type", "change")
+            print(f"[watch] Change detected: {ev_type} {p}")
             self.ingestor.trigger()
 
 
