@@ -237,3 +237,28 @@ Instead of auto-building from the repo, you can point Render at the GHCR image:
 
 Alternatively, you can let Render auto-build from this repo (as previously described) and ignore GHCR.
 ```
+
+## 📥 Ingestion (Add Documents)
+
+- Put source files under `data/documents/` (subfolders OK). Supported: `.pdf`, `.txt`, `.md`.
+- The pipeline splits, deduplicates by content hash, and upserts to Pinecone with deterministic IDs.
+- Existing `InsuranceAct.pdf` is included automatically (from repo root or `www/`).
+
+PowerShell quick start:
+
+```powershell
+# Ensure your virtualenv is active and .env has keys
+# Required: OPENAI_API_KEY, PINECONE_API_KEY2, INDEX_NAME2
+uv run python -m ingestion.cli
+```
+
+Target specific files or folders:
+
+```powershell
+uv run python -m ingestion.cli --pattern "data/documents/**/*.pdf" --pattern "data/documents/**/*.md"
+```
+
+Notes:
+- Uses OpenAI `text-embedding-3-large` to match the RAG setup.
+- Aborts if Pinecone index dimension does not match the embedding size.
+- Metadata includes `source` (relative path), `page`, and chunk `sha1` for traceability.

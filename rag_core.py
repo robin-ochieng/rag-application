@@ -18,6 +18,7 @@ def build_chain():
     vectorstore = PineconeVectorStore(
         index_name=os.getenv("INDEX_NAME2"),
         embedding=embeddings,
+        namespace=os.getenv("INDEX_NAMESPACE", "insurance-act"),
     )
 
     retrieval_prompt = hub.pull("langchain-ai/retrieval-qa-chat")

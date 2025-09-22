@@ -1,1 +1,0 @@
-powershell -NoProfile -Command "Get-Process -Name node -ErrorAction SilentlyContinue | Stop-Process -Force; cd 'C:\Users\Robin Ochieng\OneDrive - Kenbright\Gig\AI Agents\Projects\RAG Application\web'; npm run dev -- -H 127.0.0.1 -p 3001"
