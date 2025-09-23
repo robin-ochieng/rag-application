@@ -24,14 +24,14 @@ export default function Composer({ id, value, placeholder, disabled, onChange, o
   }, [value]);
 
   return (
-    <div className="sticky bottom-0 left-0 right-0 bg-[rgb(var(--background))]/80 supports-[backdrop-filter]:bg-[rgb(var(--background))]/60 backdrop-blur border-t border-[rgb(var(--border))]">
+  <div className="sticky bottom-0 left-0 right-0 bg-[rgb(var(--background))]/80 supports-[backdrop-filter]:bg-[rgb(var(--background))]/60 backdrop-blur border-t border-[rgb(var(--border))]">
       <form
         id={id}
         onSubmit={(e) => onSubmit(e)}
         className="mx-auto max-w-5xl px-0 sm:px-0 lg:px-0 py-3"
         aria-label="Message composer"
       >
-        <div className="relative rounded-[var(--radius-card)] border border-[rgb(var(--border))] bg-[rgb(var(--card))] shadow-[var(--shadow-card)]">
+  <div className="relative rounded-[var(--radius-card)] border border-[rgb(var(--border))] bg-[rgb(var(--card))] shadow-[var(--shadow-card)]">
           {/* Right send button */}
           <div className="absolute right-2 top-2">
             <button
@@ -54,7 +54,7 @@ export default function Composer({ id, value, placeholder, disabled, onChange, o
               id="chat-input"
               ref={taRef}
               aria-label="Chat input"
-              placeholder={placeholder || "Ask anything about Kenbright..."}
+              placeholder={placeholder || "Ask me anything…"}
               value={value}
               onChange={onChange}
               onKeyDown={onKeyDown}
@@ -62,6 +62,9 @@ export default function Composer({ id, value, placeholder, disabled, onChange, o
               rows={1}
               className="w-full resize-none bg-transparent outline-none placeholder:text-[rgb(var(--muted-foreground))] text-[rgb(var(--foreground))] py-2.5"
             />
+          </div>
+          <div className="px-3 pb-2 pt-0 text-xs text-[rgb(var(--muted-foreground))] select-none">
+            Press Enter to send • Shift+Enter for newline
           </div>
         </div>
       </form>

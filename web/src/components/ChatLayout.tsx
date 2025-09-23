@@ -193,7 +193,39 @@ export default function ChatLayout() {
       <div ref={scrollRef} className="overflow-y-auto px-1">
         <div className="flex flex-col gap-4 pb-4">
           {msgs.length === 0 && (
-            <div className="text-[rgb(var(--muted-foreground))]">No messages yet. Ask something to get started.</div>
+            <section
+              role="region"
+              aria-label="Welcome"
+              className="mx-auto w-full max-w-3xl"
+            >
+              <div className="rounded-lg border border-[rgb(var(--border))] bg-[rgb(var(--card))] shadow-[var(--shadow-card)] p-6 text-center">
+                <div className="mx-auto mb-3 h-10 w-10 rounded-full bg-[rgb(var(--accent))]/15 text-[rgb(var(--accent-foreground))] flex items-center justify-center">
+                  {/* chat bubble icon */}
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M21 15a4 4 0 0 1-4 4H7l-4 4V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/>
+                  </svg>
+                </div>
+                <h2 className="text-lg font-semibold text-[rgb(var(--foreground))]">Welcome to Robin GPT</h2>
+                <p className="mt-1 text-sm text-[rgb(var(--muted-foreground))]">Ask anything to get started.</p>
+                <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+                  {[
+                    "Summarize the Insurance Act",
+                    "What are the licensing requirements?",
+                    "Explain Section 156",
+                    "Give me a quick overview",
+                  ].map((s, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => submitFollowUp(s)}
+                      className="px-3 py-1.5 text-sm rounded-full border border-[rgb(var(--border))] bg-[rgb(var(--background))] hover:bg-[rgb(var(--muted))]/40 text-[rgb(var(--foreground))]"
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </section>
           )}
           {msgs.map((m, i) => {
             const isUser = m.role === "user";
@@ -211,12 +243,16 @@ export default function ChatLayout() {
                     {m.content || (hasError ? `Error: ${m.error}` : <Skeleton />)}
                   </div>
                   <div className="mt-2 text-xs text-[rgb(var(--muted-foreground))]">{m.time}</div>
-                  {!isUser && !hasError && (
-                    <>
-                      <CitationsDisclosure items={(m.citations as any) || []} />
-                      <FollowUps items={m.followUps as any} onClick={submitFollowUp} />
-                    </>
-                  )}
+                  {!isUser && !hasError && (() => {
+                    const citations = Array.isArray(m.citations) ? (m.citations as any[]) : [];
+                    const followUps = Array.isArray(m.followUps) ? (m.followUps as string[]) : [];
+                    return (
+                      <div className="space-y-2">
+                        <CitationsDisclosure items={citations as any} />
+                        <FollowUps items={followUps} onClick={submitFollowUp} />
+                      </div>
+                    );
+                  })()}
                 </div>
               </MessageCard>
             );
@@ -232,7 +268,7 @@ export default function ChatLayout() {
         onKeyDown={onKeyDown}
         onSubmit={onSubmit}
         disabled={loading}
-        placeholder="Ask about the Insurance Act..."
+        placeholder="Ask me anything…"
       />
     </div>
   );
