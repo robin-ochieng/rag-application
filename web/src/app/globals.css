@@ -98,3 +98,52 @@
 
 /* Better prose defaults for dark mode answers */
 .prose-invert :where(code):not(:where([class~="not-prose"] *)) { color: #e5e7eb; }
+
+/* Premium loader animations */
+@keyframes ringSpin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+@keyframes pulseSoft {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+@keyframes shimmer {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+.loader-ring {
+  position: relative;
+  width: 38px;
+  height: 38px;
+}
+.loader-ring:before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  padding: 3px;
+  background: linear-gradient(120deg,#7c3aed,#6366f1,#0ea5e9,#06b6d4,#7c3aed);
+  background-size: 250% 250%;
+  -webkit-mask: radial-gradient(farthest-side,#0000 60%,#000 62%);
+  mask: radial-gradient(farthest-side,#0000 60%,#000 62%);
+  animation: ringSpin 2.2s linear infinite, shimmer 6s ease-in-out infinite;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.25));
+}
+.loader-core {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%,-50%);
+  width: 18px; height: 18px;
+  border-radius: 10px;
+  background: linear-gradient(135deg,rgba(124,58,237,0.9),rgba(56,189,248,0.9));
+  box-shadow: 0 0 0 4px rgba(255,255,255,0.04), 0 4px 12px -2px rgba(0,0,0,0.35), 0 0 0 1px rgba(255,255,255,0.08) inset;
+  animation: pulseSoft 2.4s ease-in-out infinite;
+}
+.loader-text {
+  background: linear-gradient(90deg,rgba(124,58,237,0.2),rgba(56,189,248,0.3),rgba(124,58,237,0.2));
+  background-size: 200% 100%;
+  animation: shimmer 4.5s linear infinite;
+  -webkit-background-clip: text;
+  color: transparent;
+}

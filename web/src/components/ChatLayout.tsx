@@ -20,6 +20,7 @@ export default function ChatLayout() {
   const [msgs, setMsgs] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
   const [streaming, setStreaming] = useState(false);
+  const [gotFirstToken, setGotFirstToken] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Always use Next.js API proxy to avoid browser CORS/host issues
@@ -95,6 +96,7 @@ export default function ChatLayout() {
               return next;
             });
           } else if (evt.type === "token") {
+            if (!gotFirstToken) setGotFirstToken(true);
             fullAnswer += evt.value;
             setMsgs((prev) => {
               const next = [...prev];
@@ -152,6 +154,7 @@ export default function ChatLayout() {
       }
     } finally {
       setStreaming(false);
+      setGotFirstToken(false);
       setLoading(false);
     }
   }
@@ -282,7 +285,15 @@ export default function ChatLayout() {
                     <IconCluster onCopy={() => navigator.clipboard.writeText(m.content)} />
                   )}
                   <div className="whitespace-pre-wrap chat-content">
-                    {m.content || (hasError ? `Error: ${m.error}` : <Skeleton />)}
+                    {m.content || (hasError ? `Error: ${m.error}` : (!gotFirstToken && streaming && i === msgs.length - 1 && m.role === "assistant" ? (
+                      <div className="flex items-center gap-4 py-2 px-1">
+                        <div className="loader-ring"><div className="loader-core" /></div>
+                        <div>
+                          <div className="text-sm font-medium loader-text">Processing your request…</div>
+                          <div className="text-xs mt-1 text-[rgb(var(--muted-foreground))]">Retrieving context & preparing answer</div>
+                        </div>
+                      </div>
+                    ) : <Skeleton />))}
                   </div>
                   <div className="mt-2 text-xs text-[rgb(var(--muted-foreground))]">{m.time}</div>
                   {!isUser && !hasError && (() => {
