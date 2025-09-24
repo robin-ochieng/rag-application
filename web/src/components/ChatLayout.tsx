@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState, type FormEvent, KeyboardEvent, type ChangeEvent } from "react";
+import { useStreamAnswer } from "@/components/chat/useStreamAnswer";
 import { FollowUps, IconCluster, MessageCard, Skeleton } from "./chat/Card";
 import CitationsDisclosure from "@/components/chat/CitationsDisclosure";
 import Composer from "@/components/chat/Composer";
@@ -18,7 +19,35 @@ type Message = {
 export default function ChatLayout() {
   const [q, setQ] = useState("");
   const [msgs, setMsgs] = useState<Message[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(false); // legacy non-stream fallback
+  const [streamSources, setStreamSources] = useState<any[]>([]);
+  const [streamingError, setStreamingError] = useState<string | null>(null);
+  const { start: startStream, stop: stopStream, streaming, answer: streamAnswer } = useStreamAnswer({
+    onMeta: (sources) => setStreamSources(sources),
+    onToken: (t) => {
+      setMsgs((m) => {
+        const next = [...m];
+        const idx = next.findIndex((mm) => mm.role === "assistant" && mm.content === "" && !mm.error);
+        if (idx >= 0) {
+          next[idx] = { ...next[idx], content: (next[idx].content || "") + t, sources: streamSources };
+        }
+        return next;
+      });
+    },
+    onDone: (full) => {
+      setMsgs((m) => {
+        const next = [...m];
+        const idx = next.findIndex((mm) => mm.role === "assistant" && mm.content && !mm.error);
+        if (idx >= 0) {
+          next[idx] = { ...next[idx], content: full, sources: streamSources };
+        }
+        return next;
+      });
+    },
+    onError: (msg) => {
+      setStreamingError(msg);
+    },
+  });
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Always use Next.js API proxy to avoid browser CORS/host issues
@@ -39,7 +68,7 @@ export default function ChatLayout() {
 
   async function onSubmit(e?: FormEvent<HTMLFormElement>) {
     if (e) e.preventDefault();
-    if (loading) return; // prevent double-submit
+    if (loading || streaming) return; // prevent double-submit
     if (!q.trim()) return;
 
     const userMsg: Message = { role: "user", content: q, time: timeNow() };
@@ -49,69 +78,48 @@ export default function ChatLayout() {
       { role: "assistant", content: "", time: timeNow(), error: undefined },
     ]);
     setQ("");
-    setLoading(true);
+    setStreamingError(null);
+    setStreamSources([]);
 
-    try {
-      const res = await fetch(apiPath, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ q: userMsg.content }),
-        cache: "no-store",
-      });
-      let payload: any = {};
+    // Attempt streaming first
+    startStream(userMsg.content).catch(async (e) => {
+      // Fallback to non-stream on error
+      console.warn("Streaming failed, falling back", e);
+      setLoading(true);
       try {
-        payload = await res.json();
-      } catch (e: any) {
-        const txt = await res.text().catch(() => "");
-        payload = { answer: "", sources: [], error: txt || e?.message || `Invalid JSON (status ${res.status})` };
+        const res = await fetch(apiPath, {
+          method: "POST",
+            headers: { "content-type": "application/json" },
+          body: JSON.stringify({ q: userMsg.content }),
+          cache: "no-store",
+        });
+        const payload = await res.json().catch(() => ({ answer: "", sources: [], error: "Invalid JSON" }));
+        const { data, status, ok } = { data: payload, status: res.status, ok: res.ok };
+        setMsgs((prev: Message[]) => {
+          const next = [...prev];
+          const idx = next.findIndex((mm) => mm.role === "assistant" && !mm.content && !mm.error);
+          if (idx >= 0) {
+            const hasAnswer = !!(data.answer && data.answer.length > 0);
+            const errText = data.error ? String(data.error) : (!ok ? `HTTP ${status}` : "");
+            if (!hasAnswer && errText) {
+              next[idx] = { ...next[idx], content: "", error: errText };
+            } else {
+              next[idx] = { ...next[idx], content: data.answer || "", sources: data.sources || [] };
+            }
+          }
+          return next;
+        });
+      } catch (err2: any) {
+        setMsgs((prev: Message[]) => {
+          const next = [...prev];
+          const idx = next.findIndex((mm) => mm.role === "assistant" && !mm.content && !mm.error);
+          if (idx >= 0) next[idx] = { ...next[idx], content: "", error: err2?.message || "Request failed" };
+          return next;
+        });
+      } finally {
+        setLoading(false);
       }
-      const { data, status, ok } = { data: payload, status: res.status, ok: res.ok };
-          setMsgs((prev: Message[]) => {
-        const next = [...prev];
-        const idx = next.findIndex((m) => m.role === "assistant" && !m.content && !m.error);
-        if (idx >= 0) {
-          // Build citations from either explicit citations or fallback to sources metadata
-          const cites = Array.isArray(data?.citations)
-            ? data.citations
-            : Array.isArray(data?.sources)
-            ? (data.sources as any[]).map((s) => {
-                const meta = s?.metadata || {};
-                const rawSrc = (meta.source || meta.source_path || "") as string;
-                const norm = rawSrc.replace(/\\/g, "/");
-                const rawPage = (meta.page as number) || (meta.page_number as number) || undefined;
-                const pageNum = typeof rawPage === "number" && !Number.isNaN(rawPage) ? Math.max(1, Math.floor(rawPage)) : undefined;
-                const fileLabel = meta.file_name || (norm.split("/").pop() || "Source");
-                const pageSuffix = pageNum ? `#page=${pageNum}` : "";
-                const href = norm ? `/pdf?src=${encodeURIComponent(norm)}${pageSuffix}` : "#";
-                const label = pageNum ? `${fileLabel} (p. ${pageNum})` : fileLabel;
-                return { label, href };
-              })
-            : [];
-          const base: Message = {
-            role: "assistant",
-            content: data.answer || "",
-            time: timeNow(),
-            citations: cites,
-            followUps: data.followUps || [],
-          };
-          if (Array.isArray(data.sources)) base.sources = data.sources;
-          const hasAnswer = !!(data.answer && data.answer.length > 0);
-          const errText = data.error ? String(data.error) : (!ok ? `HTTP ${status}` : "");
-          if (!hasAnswer && errText) { base.content = ""; base.error = errText; }
-          next[idx] = base;
-        }
-        return next;
-      });
-    } catch (err: any) {
-      setMsgs((prev: Message[]) => {
-        const next = [...prev];
-        const idx = next.findIndex((m) => m.role === "assistant" && !m.content && !m.error);
-        if (idx >= 0) next[idx] = { role: "assistant", content: "", error: err?.message || "Request failed", time: timeNow() };
-        return next;
-      });
-    } finally {
-      setLoading(false);
-    }
+    });
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
@@ -193,7 +201,33 @@ export default function ChatLayout() {
       <div ref={scrollRef} className="overflow-y-auto px-1">
         <div className="flex flex-col gap-4 pb-4">
           {msgs.length === 0 && (
-            <div className="text-[rgb(var(--muted-foreground))]">No messages yet. Ask something to get started.</div>
+            <div className="flex flex-col items-center justify-center py-20 text-center relative">
+              <h2 className="text-xl font-semibold tracking-tight mb-4 bg-gradient-to-r from-indigo-500 via-sky-500 to-teal-500 bg-clip-text text-transparent">
+                Welcome to Kenbright GPT
+              </h2>
+              <p className="max-w-lg text-sm sm:text-base leading-relaxed text-[rgb(var(--muted-foreground))] mb-7">
+                Ask anything and I'll search across curated Insurance Act resources to give concise, cited answers. Try asking about regulatory definitions, compliance obligations, or specific clauses.
+              </p>
+              <div className="flex flex-wrap items-center justify-center gap-2 mb-10">
+                {[
+                  "What are the capital requirements?",
+                  "Summarize duties of an insurer",
+                  "Explain section 57 in simple terms",
+                  "Key compliance deadlines?",
+                ].map((ex) => (
+                  <button
+                    key={ex}
+                    onClick={() => submitFollowUp(ex)}
+                    className="group relative rounded-full border border-[rgb(var(--border))] px-4 py-1.5 text-xs sm:text-sm font-medium text-[rgb(var(--foreground))]/80 hover:text-[rgb(var(--foreground))] transition bg-[rgb(var(--background))]/60 hover:bg-[rgb(var(--accent))]/40"
+                  >
+                    {ex}
+                  </button>
+                ))}
+              </div>
+              <div className="text-xs text-[rgb(var(--muted-foreground))] flex items-center gap-1">
+                Developed by <span className="font-medium text-[rgb(var(--foreground))]">Kenbright AI</span>
+              </div>
+            </div>
           )}
           {msgs.map((m, i) => {
             const isUser = m.role === "user";
@@ -207,8 +241,30 @@ export default function ChatLayout() {
                   {!isUser && !hasError && (
                     <IconCluster onCopy={() => navigator.clipboard.writeText(m.content)} />
                   )}
-                  <div className="whitespace-pre-wrap chat-content">
-                    {m.content || (hasError ? `Error: ${m.error}` : <Skeleton />)}
+                  <div className="whitespace-pre-wrap chat-content relative">
+                    {m.content ? (
+                      m.content
+                    ) : hasError ? (
+                      `Error: ${m.error}`
+                    ) : (
+                      <>
+                        {/* Premium pre-stream animation */}
+                        {streaming && i === msgs.length - 1 ? (
+                          <div className="flex items-center gap-3 py-2">
+                            <div className="relative h-5 w-5">
+                              <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-indigo-500 via-sky-500 to-teal-500 animate-pulse opacity-30" />
+                              <div className="absolute inset-0 rounded-full border border-indigo-400/40 animate-[spin_2s_linear_infinite]" />
+                              <div className="absolute inset-1 rounded-full bg-[rgb(var(--background))]" />
+                            </div>
+                            <div className="text-sm text-[rgb(var(--muted-foreground))] animate-pulse [animation-delay:150ms]">
+                              Thinking…
+                            </div>
+                          </div>
+                        ) : (
+                          <Skeleton />
+                        )}
+                      </>
+                    )}
                   </div>
                   <div className="mt-2 text-xs text-[rgb(var(--muted-foreground))]">{m.time}</div>
                   {!isUser && !hasError && (
@@ -231,9 +287,15 @@ export default function ChatLayout() {
         onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setQ(e.target.value)}
         onKeyDown={onKeyDown}
         onSubmit={onSubmit}
-        disabled={loading}
-        placeholder="Ask about the Insurance Act..."
+        disabled={loading || streaming}
+  placeholder="Ask me anything…"
       />
+      {streaming && (
+        <div className="text-xs text-[rgb(var(--muted-foreground))] flex items-center gap-1 px-1 -mt-2">
+          <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75" /><span className="relative inline-flex rounded-full h-2 w-2 bg-sky-500" /></span>
+          Streaming…
+        </div>
+      )}
     </div>
   );
 }

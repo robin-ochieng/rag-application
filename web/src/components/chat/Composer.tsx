@@ -38,13 +38,25 @@ export default function Composer({ id, value, placeholder, disabled, onChange, o
               type="submit"
               aria-label="Send message"
               disabled={disabled}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--accent))] text-[rgb(var(--foreground))] hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-[rgb(var(--ring))] disabled:opacity-60"
+              className="inline-flex h-10 w-12 items-center justify-center rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--accent))] text-[rgb(var(--accent-foreground))] shadow-sm hover:shadow-md hover:bg-[rgb(var(--accent))]/90 transition-all focus:outline-none focus:ring-2 focus:ring-[rgb(var(--ring))] disabled:opacity-60 disabled:shadow-none"
               title="Send"
             >
-              {/* Simple paper-plane icon */}
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="M22 2L11 13" />
-                <path d="M22 2l-7 20-4-9-9-4 20-7z" />
+              {/* Modern horizontal plane icon */}
+              <svg
+                width="30"
+                height="30"
+                viewBox="0 0 48 48"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+                className="drop-shadow-sm"
+              >
+                <path d="M6 24h14" />
+                <path d="M6 18h20c6 0 11.5 3.5 16 6l-16 6c-4.5 2.5-10 6-12 9v-9" />
+                <path d="M26 24l16 0" />
               </svg>
             </button>
           </div>

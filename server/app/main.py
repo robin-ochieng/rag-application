@@ -2,7 +2,7 @@ import os
 import re
 import time
 import logging
-from typing import Any, Dict
+from typing import Any, Dict, AsyncGenerator
 
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -31,7 +31,7 @@ if TEST_MODE:
     def ask(q: str) -> Dict[str, Any]:
         return {"answer": f"Echo: {q}", "sources": []}
 else:
-    from rag_core import ask  # type: ignore
+    from rag_core import ask, ask_stream  # type: ignore
 
 load_dotenv()
 
@@ -115,6 +115,29 @@ async def ask_route(
         latency_ms = (time.perf_counter() - start) * 1000
         size = len(req.q or "")
         logger.info("ask request processed", extra={"path": str(request.url.path), "msg_size": size, "latency_ms": round(latency_ms, 2)})
+
+
+from fastapi.responses import StreamingResponse
+import json
+
+
+@app.post("/ask-stream")
+@limit("120/minute")
+async def ask_stream_route(
+    req: AskRequest,
+    request: Request,
+    x_api_key: str | None = Header(default=None, alias="X-API-KEY"),
+):
+    if BACKEND_API_KEY and x_api_key != BACKEND_API_KEY:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    async def event_gen() -> AsyncGenerator[bytes, None]:
+        async for evt in ask_stream(req.q):  # type: ignore
+            line = json.dumps(evt, ensure_ascii=False)
+            yield f"data: {line}\n\n".encode("utf-8")
+        yield b"data: [DONE]\n\n"
+
+    return StreamingResponse(event_gen(), media_type="text/event-stream")
 
 
 @app.post("/chat")

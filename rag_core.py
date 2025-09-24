@@ -1,5 +1,5 @@
 import os
-from typing import Dict, List
+from typing import Dict, List, AsyncGenerator
 
 from dotenv import load_dotenv
 from langchain import hub
@@ -34,7 +34,7 @@ def build_chain():
     llm = ChatOpenAI(temperature=0, model="gpt-4o")
     retrieval_prompt = hub.pull("langchain-ai/retrieval-qa-chat")
     combine_docs_chain = create_stuff_documents_chain(llm=llm, prompt=retrieval_prompt)
-    return {"embeddings": embeddings, "combine": combine_docs_chain}
+    return {"embeddings": embeddings, "combine": combine_docs_chain, "llm": llm, "prompt": retrieval_prompt}
 
 CHAIN = build_chain()
 
@@ -81,3 +81,52 @@ def ask(query: str) -> Dict:
             snippet = snippet[:297] + "..."
         sources.append({"snippet": snippet, "metadata": doc.metadata or {}})
     return {"answer": answer, "sources": sources}
+
+
+async def ask_stream(query: str) -> AsyncGenerator[Dict, None]:
+    """Async generator that yields streaming tokens and meta similar to ask().
+
+    Yields dict events of shape:
+      {"type": "meta", "sources": [...]} (first)
+      {"type": "token", "value": "..."} (multiple)
+      {"type": "done", "answer": full_answer}
+      {"type": "error", "message": str}
+    """
+    try:
+        docs = _retrieve_from_pinecone(query, k=6)
+        sources: List[Dict] = []
+        for doc in docs:
+            snippet = (doc.page_content or "").strip().replace("\n", " ")
+            if len(snippet) > 300:
+                snippet = snippet[:297] + "..."
+            sources.append({"snippet": snippet, "metadata": doc.metadata or {}})
+        # Emit meta first
+        yield {"type": "meta", "sources": sources}
+
+        # Build a one-off chain manually to access streaming tokens from underlying ChatOpenAI
+        llm: ChatOpenAI = CHAIN["llm"]  # type: ignore
+        prompt = CHAIN["prompt"]  # pulled earlier
+        # The retrieval-qa-chat prompt expects "input" + "context"
+        # We'll manually format the prompt for streaming rather than using the combine_docs_chain which buffers.
+        from langchain_core.messages import HumanMessage
+        # Compose context block
+        context_block = "\n\n".join([d.page_content for d in docs])
+        formatted = prompt.format_messages(input=query, context=context_block)  # returns list[BaseMessage]
+
+        full_answer_parts: List[str] = []
+        async for chunk in llm.astream(formatted):  # chunk is an AIMessageChunk
+            token = getattr(chunk, "content", None)
+            if not token:
+                continue
+            if isinstance(token, list):  # sometimes comes as list of content parts
+                # Flatten textual parts only
+                token_text = "".join([t for t in token if isinstance(t, str)])
+            else:
+                token_text = str(token)
+            if token_text:
+                full_answer_parts.append(token_text)
+                yield {"type": "token", "value": token_text}
+        full_answer = "".join(full_answer_parts)
+        yield {"type": "done", "answer": full_answer}
+    except Exception as e:  # pragma: no cover - streaming error path
+        yield {"type": "error", "message": str(e)}
