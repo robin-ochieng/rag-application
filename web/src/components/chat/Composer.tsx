@@ -38,13 +38,25 @@ export default function Composer({ id, value, placeholder, disabled, onChange, o
               type="submit"
               aria-label="Send message"
               disabled={disabled}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--accent))] text-[rgb(var(--foreground))] hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-[rgb(var(--ring))] disabled:opacity-60"
+              className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--accent))] text-[rgb(var(--foreground))] shadow-sm hover:shadow-md transition-all hover:brightness-105 focus:outline-none focus:ring-2 focus:ring-[rgb(var(--ring))] disabled:opacity-60"
               title="Send"
             >
-              {/* Simple paper-plane icon */}
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="M22 2L11 13" />
-                <path d="M22 2l-7 20-4-9-9-4 20-7z" />
+              <svg
+                width="30"
+                height="30"
+                viewBox="0 0 32 32"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.9"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                {/* Horizontal minimal paper plane */}
+                <path d="M3 16L27.5 7.5 22 16 27.5 24.5 3 16Z" />
+                <path d="M22 16L11 16" />
+                <path d="M22 16L12.5 11.5" />
+                <path d="M22 16L12.5 20.5" />
               </svg>
             </button>
           </div>
