@@ -19,6 +19,7 @@ export default function ChatLayout() {
   const [q, setQ] = useState("");
   const [msgs, setMsgs] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
+  const [streaming, setStreaming] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Always use Next.js API proxy to avoid browser CORS/host issues
@@ -51,65 +52,106 @@ export default function ChatLayout() {
     setQ("");
     setLoading(true);
 
+    // Attempt streaming first
+    setStreaming(true);
     try {
-      const res = await fetch(apiPath, {
+      const controller = new AbortController();
+      const res = await fetch("/api/chat/stream", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ q: userMsg.content }),
-        cache: "no-store",
+        body: JSON.stringify({ q: userMsg.content, query: userMsg.content }),
+        signal: controller.signal,
       });
-      let payload: any = {};
-      try {
-        payload = await res.json();
-      } catch (e: any) {
-        const txt = await res.text().catch(() => "");
-        payload = { answer: "", sources: [], error: txt || e?.message || `Invalid JSON (status ${res.status})` };
-      }
-      const { data, status, ok } = { data: payload, status: res.status, ok: res.ok };
-          setMsgs((prev: Message[]) => {
-        const next = [...prev];
-        const idx = next.findIndex((m) => m.role === "assistant" && !m.content && !m.error);
-        if (idx >= 0) {
-          // Build citations from either explicit citations or fallback to sources metadata
-          const cites = Array.isArray(data?.citations)
-            ? data.citations
-            : Array.isArray(data?.sources)
-            ? (data.sources as any[]).map((s) => {
-                const meta = s?.metadata || {};
-                const rawSrc = (meta.source || meta.source_path || "") as string;
-                const norm = rawSrc.replace(/\\/g, "/");
-                const rawPage = (meta.page as number) || (meta.page_number as number) || undefined;
-                const pageNum = typeof rawPage === "number" && !Number.isNaN(rawPage) ? Math.max(1, Math.floor(rawPage)) : undefined;
-                const fileLabel = meta.file_name || (norm.split("/").pop() || "Source");
-                const pageSuffix = pageNum ? `#page=${pageNum}` : "";
-                const href = norm ? `/pdf?src=${encodeURIComponent(norm)}${pageSuffix}` : "#";
-                const label = pageNum ? `${fileLabel} (p. ${pageNum})` : fileLabel;
-                return { label, href };
-              })
-            : [];
-          const base: Message = {
-            role: "assistant",
-            content: data.answer || "",
-            time: timeNow(),
-            citations: cites,
-            followUps: data.followUps || [],
-          };
-          if (Array.isArray(data.sources)) base.sources = data.sources;
-          const hasAnswer = !!(data.answer && data.answer.length > 0);
-          const errText = data.error ? String(data.error) : (!ok ? `HTTP ${status}` : "");
-          if (!hasAnswer && errText) { base.content = ""; base.error = errText; }
-          next[idx] = base;
+      if (!res.ok || !res.body) throw new Error(`Streaming failed (${res.status})`);
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let assistantIndex: number | null = null;
+      let fullAnswer = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = chunk.split("\n");
+        for (const raw of lines) {
+          const line = raw.trim();
+          if (!line.startsWith("data:")) continue;
+          const dataStr = line.slice(5).trim();
+            if (dataStr === "[DONE]") {
+              continue;
+            }
+          let evt: any;
+          try { evt = JSON.parse(dataStr); } catch { continue; }
+          if (assistantIndex === null) {
+            assistantIndex = msgs.length; // index of the assistant placeholder at time of submit
+          }
+          if (evt.type === "meta") {
+            // attach sources now
+            setMsgs((prev) => {
+              const next = [...prev];
+              const idx = next.findIndex((m) => m.role === "assistant" && !m.content && !m.error);
+              if (idx >= 0) {
+                next[idx].sources = evt.sources || [];
+              }
+              return next;
+            });
+          } else if (evt.type === "token") {
+            fullAnswer += evt.value;
+            setMsgs((prev) => {
+              const next = [...prev];
+              const idx = next.findIndex((m) => m.role === "assistant" && !m.error && typeof m.content === "string");
+              if (idx >= 0) {
+                next[idx] = { ...next[idx], content: fullAnswer };
+              }
+              return next;
+            });
+          } else if (evt.type === "done") {
+            if (evt.answer) fullAnswer = evt.answer;
+            setMsgs((prev) => {
+              const next = [...prev];
+              const idx = next.findIndex((m) => m.role === "assistant" && !m.error);
+              if (idx >= 0) {
+                next[idx] = { ...next[idx], content: fullAnswer };
+              }
+              return next;
+            });
+          } else if (evt.type === "error") {
+            setMsgs((prev) => {
+              const next = [...prev];
+              const idx = next.findIndex((m) => m.role === "assistant" && !m.content && !m.error);
+              if (idx >= 0) next[idx] = { ...next[idx], error: evt.error || "Streaming error" };
+              return next;
+            });
+          }
         }
-        return next;
-      });
-    } catch (err: any) {
-      setMsgs((prev: Message[]) => {
-        const next = [...prev];
-        const idx = next.findIndex((m) => m.role === "assistant" && !m.content && !m.error);
-        if (idx >= 0) next[idx] = { role: "assistant", content: "", error: err?.message || "Request failed", time: timeNow() };
-        return next;
-      });
+      }
+    } catch (streamErr) {
+      // Fallback to non-streaming call
+      try {
+        const res = await fetch(apiPath, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ q: userMsg.content }),
+          cache: "no-store",
+        });
+        const payload = await res.json().catch(() => ({ error: `Bad JSON (status ${res.status})` }));
+        setMsgs((prev) => {
+          const next = [...prev];
+          const idx = next.findIndex((m) => m.role === "assistant" && !m.content && !m.error);
+          if (idx >= 0) {
+            next[idx] = { ...next[idx], content: payload.answer || "", sources: payload.sources || [], error: payload.error };
+          }
+          return next;
+        });
+      } catch (fallbackErr: any) {
+        setMsgs((prev) => {
+          const next = [...prev];
+            const idx = next.findIndex((m) => m.role === "assistant" && !m.content && !m.error);
+            if (idx >= 0) next[idx] = { ...next[idx], error: fallbackErr?.message || "Request failed" };
+            return next;
+        });
+      }
     } finally {
+      setStreaming(false);
       setLoading(false);
     }
   }
@@ -267,7 +309,7 @@ export default function ChatLayout() {
         onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setQ(e.target.value)}
         onKeyDown={onKeyDown}
         onSubmit={onSubmit}
-        disabled={loading}
+        disabled={loading || streaming}
         placeholder="Ask me anything…"
       />
     </div>

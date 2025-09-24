@@ -5,6 +5,7 @@ import logging
 from typing import Any, Dict
 
 from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
@@ -31,7 +32,7 @@ if TEST_MODE:
     def ask(q: str) -> Dict[str, Any]:
         return {"answer": f"Echo: {q}", "sources": []}
 else:
-    from rag_core import ask  # type: ignore
+    from rag_core import ask, ask_stream  # type: ignore
 
 load_dotenv()
 
@@ -135,3 +136,35 @@ async def chat(
         latency_ms = (time.perf_counter() - start) * 1000
         size = len(req.message or "")
         logger.info("chat request processed", extra={"path": str(request.url.path), "msg_size": size, "latency_ms": round(latency_ms, 2)})
+
+
+@app.post("/ask-stream")
+@limit("60/minute")
+async def ask_stream_route(
+    req: AskRequest,
+    request: Request,
+    x_api_key: str | None = Header(default=None, alias="X-API-KEY"),
+):
+    if BACKEND_API_KEY and x_api_key != BACKEND_API_KEY:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    if TEST_MODE:
+        # simple synthetic streaming for tests
+        async def fake():  # type: ignore
+            yield {"type": "meta", "sources": []}
+            for part in ["Echoing: ", req.q]:
+                yield {"type": "token", "value": part}
+            yield {"type": "done", "answer": f"Echoing: {req.q}"}
+        gen = fake()
+    else:
+        gen = ask_stream(req.q)
+
+    async def event_gen():
+        try:
+            async for evt in gen:  # type: ignore
+                if await request.is_disconnected():
+                    break
+                yield f"data: {evt}\n\n" if isinstance(evt, str) else f"data: {__import__('json').dumps(evt)}\n\n"
+        finally:
+            yield "data: [DONE]\n\n"
+
+    return StreamingResponse(event_gen(), media_type="text/event-stream")

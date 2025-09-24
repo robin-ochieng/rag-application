@@ -1,5 +1,5 @@
 import os
-from typing import Dict, List
+from typing import Dict, List, AsyncIterator, Any
 
 from dotenv import load_dotenv
 from langchain import hub
@@ -34,7 +34,7 @@ def build_chain():
     llm = ChatOpenAI(temperature=0, model="gpt-4o")
     retrieval_prompt = hub.pull("langchain-ai/retrieval-qa-chat")
     combine_docs_chain = create_stuff_documents_chain(llm=llm, prompt=retrieval_prompt)
-    return {"embeddings": embeddings, "combine": combine_docs_chain}
+    return {"embeddings": embeddings, "combine": combine_docs_chain, "llm": llm}
 
 CHAIN = build_chain()
 
@@ -81,3 +81,51 @@ def ask(query: str) -> Dict:
             snippet = snippet[:297] + "..."
         sources.append({"snippet": snippet, "metadata": doc.metadata or {}})
     return {"answer": answer, "sources": sources}
+
+
+async def ask_stream(query: str) -> AsyncIterator[Dict[str, Any]]:
+    """Async generator streaming answer tokens.
+
+    Yields event dicts with shape:
+      {"type": "meta", "sources": [...]} once
+      {"type": "token", "value": "..."} multiple times
+      {"type": "done", "answer": "full answer"} once at end
+      {"type": "error", "error": "message"} on failure
+    """
+    docs = _retrieve_from_pinecone(query, k=6)
+    sources: List[Dict[str, Any]] = []
+    for doc in docs:
+        snippet = (doc.page_content or "").strip().replace("\n", " ")
+        if len(snippet) > 300:
+            snippet = snippet[:297] + "..."
+        sources.append({"snippet": snippet, "metadata": doc.metadata or {}})
+    # Emit sources metadata first
+    yield {"type": "meta", "sources": sources}
+
+    # Build a simplified context prompt similar to combine chain use
+    # We directly stream from the underlying llm to get incremental tokens.
+    llm: ChatOpenAI = CHAIN["llm"]
+    context_blocks = []
+    for i, d in enumerate(docs, 1):
+        context_blocks.append(f"Source {i}:\n{d.page_content}")
+    context_text = "\n\n".join(context_blocks)
+    system_msg = (
+        "You are a helpful assistant. Use the provided sources to answer the question. "
+        "If unsure, say you are not certain. Keep answers concise and grounded."
+    )
+    user_msg = f"Context:\n{context_text}\n\nQuestion: {query}\n\nAnswer:" if context_text else query
+
+    collected: List[str] = []
+    try:
+        # ChatOpenAI astream expects sequence of tuples or messages
+        async for chunk in llm.astream([("system", system_msg), ("human", user_msg)]):
+            token = getattr(chunk, "content", None)
+            if not token:
+                continue
+            collected.append(token)
+            yield {"type": "token", "value": token}
+    except Exception as e:  # pragma: no cover - streaming failures
+        yield {"type": "error", "error": str(e)}
+        return
+    full_answer = "".join(collected)
+    yield {"type": "done", "answer": full_answer}
