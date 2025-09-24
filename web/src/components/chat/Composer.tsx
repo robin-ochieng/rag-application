@@ -52,11 +52,13 @@ export default function Composer({ id, value, placeholder, disabled, onChange, o
                 strokeLinejoin="round"
                 aria-hidden="true"
               >
-                {/* Horizontal minimal paper plane */}
-                <path d="M3 16L27.5 7.5 22 16 27.5 24.5 3 16Z" />
-                <path d="M22 16L11 16" />
-                <path d="M22 16L12.5 11.5" />
-                <path d="M22 16L12.5 20.5" />
+                {/* Flipped horizontal minimal paper plane */}
+                <g transform="translate(32,0) scale(-1,1)">
+                  <path d="M3 16L27.5 7.5 22 16 27.5 24.5 3 16Z" />
+                  <path d="M22 16L11 16" />
+                  <path d="M22 16L12.5 11.5" />
+                  <path d="M22 16L12.5 20.5" />
+                </g>
               </svg>
             </button>
           </div>
