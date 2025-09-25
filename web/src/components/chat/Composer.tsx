@@ -38,26 +38,26 @@ export default function Composer({ id, value, placeholder, disabled, onChange, o
               type="submit"
               aria-label="Send message"
               disabled={disabled}
-              className="inline-flex h-10 w-12 items-center justify-center rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--accent))] text-[rgb(var(--accent-foreground))] shadow-sm hover:shadow-md hover:bg-[rgb(var(--accent))]/90 transition-all focus:outline-none focus:ring-2 focus:ring-[rgb(var(--ring))] disabled:opacity-60 disabled:shadow-none"
+              className="group inline-flex h-10 w-12 items-center justify-center rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--accent))] text-[rgb(var(--accent-foreground))] shadow-sm hover:shadow-md hover:bg-[rgb(var(--accent))]/90 focus:outline-none focus:ring-2 focus:ring-[rgb(var(--ring))] disabled:opacity-60 disabled:shadow-none transition-all duration-200 active:scale-[0.96]"
               title="Send"
             >
-              {/* Modern horizontal plane icon */}
+              {/* Premium send icon (inspired by modern icon sets) */}
               <svg
                 width="30"
                 height="30"
-                viewBox="0 0 48 48"
+                viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
-                strokeWidth="2.2"
+                strokeWidth="1.9"
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 aria-hidden="true"
-                className="drop-shadow-sm"
+                className="transition-transform duration-200 ease-out group-hover:scale-110 group-active:scale-95"
               >
-                <path d="M6 24h14" />
-                <path d="M6 18h20c6 0 11.5 3.5 16 6l-16 6c-4.5 2.5-10 6-12 9v-9" />
-                <path d="M26 24l16 0" />
+                <path d="M3.5 11.25L19.2 5.4c.9-.34 1.72.48 1.38 1.38l-5.86 15.69c-.34.9-1.62.94-1.96.05l-2.28-5.94a1 1 0 0 0-.6-.6L3.55 13.7c-.92-.33-.93-1.63-.05-1.97Z" />
+                <path d="M10.25 13.75l3.9-3.9" />
               </svg>
+              <span className="pointer-events-none absolute inset-0 rounded-md opacity-0 group-hover:opacity-40 group-active:opacity-60 transition duration-300 bg-[radial-gradient(circle_at_50%_50%,rgba(255,255,255,0.45),rgba(255,255,255,0))]" />
             </button>
           </div>
           <div className="pl-3 pr-12 py-2">
