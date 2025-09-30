@@ -1,0 +1,39 @@
+{
+  "namespace": "ifrs-17",
+  "generated_at": "2025-09-30T18:16:03.494979Z",
+  "total_unique_chunks": 1777,
+  "files": [
+    {
+      "file_name": "CAS-WorkingPaper_IFRS-17-Primer-12-16-21 1.pdf",
+      "chunks": 59
+    },
+    {
+      "file_name": "IAA_IAN100_31August2021 2.pdf",
+      "chunks": 845
+    },
+    {
+      "file_name": "IFRS-17-a-simplified-approach.pdf",
+      "chunks": 29
+    },
+    {
+      "file_name": "IFRS17 Insurance Contracts 2.pdf",
+      "chunks": 269
+    },
+    {
+      "file_name": "IRA_IFRS 17_Digital Training Module.pdf",
+      "chunks": 223
+    },
+    {
+      "file_name": "KAFS_NBFIRA Presentation - Inception Meeting 0323 (3).pdf",
+      "chunks": 58
+    },
+    {
+      "file_name": "NBFIRA_IFRS 17_Digital Training Module.pdf",
+      "chunks": 261
+    },
+    {
+      "file_name": "insurance-ifrs17-Unpacking-LRC-LIC-Calculations.pdf",
+      "chunks": 33
+    }
+  ]
+}

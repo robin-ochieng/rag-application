@@ -66,7 +66,7 @@ export default function Composer({ id, value, placeholder, disabled, onChange, o
               id="chat-input"
               ref={taRef}
               aria-label="Chat input"
-              placeholder={placeholder || "Ask anything about Kenbright..."}
+              placeholder={placeholder || "Ask about Insurance Act or IFRS-17..."}
               value={value}
               onChange={onChange}
               onKeyDown={onKeyDown}

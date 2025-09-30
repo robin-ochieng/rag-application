@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import "highlight.js/styles/github-dark.css";
 import NavBar from "@/components/NavBar";
 import Providers from "./providers";
 
@@ -9,7 +10,7 @@ const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"]
 
 export const metadata: Metadata = {
   title: "Kenbright GPT",
-  description: "Insurance Act Chatbot — RAG over Insurance Act documents",
+  description: "AI Assistant for Insurance Act and IFRS-17 — RAG over regulatory documents",
 };
 
 export default function RootLayout({
@@ -20,7 +21,20 @@ export default function RootLayout({
       <head>
         <script
           dangerouslySetInnerHTML={{
-            __html: "!function(){try{var e=document.documentElement,t=localStorage.getItem('theme');if(t){e.classList.toggle('dark',t==='dark');}else{var m=window.matchMedia('(prefers-color-scheme: dark)').matches;e.classList.toggle('dark',m)}}catch(n){}}();",
+            __html: `
+              !function(){
+                try{
+                  var e=document.documentElement;
+                  var t=localStorage.getItem('kenbright-theme');
+                  if(t && t !== 'system'){
+                    e.classList.toggle('dark', t === 'dark');
+                  } else {
+                    var m=window.matchMedia('(prefers-color-scheme: dark)').matches;
+                    e.classList.toggle('dark', m);
+                  }
+                } catch(n){}
+              }();
+            `,
           }}
         />
       </head>

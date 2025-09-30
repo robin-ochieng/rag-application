@@ -4,6 +4,7 @@ import { useStreamAnswer } from "@/components/chat/useStreamAnswer";
 import { FollowUps, IconCluster, MessageCard, Skeleton } from "./chat/Card";
 import CitationsDisclosure from "@/components/chat/CitationsDisclosure";
 import Composer from "@/components/chat/Composer";
+import MarkdownResponse from "@/components/chat/MarkdownResponse";
 
 // Minimal message shape
 type Message = {
@@ -27,7 +28,14 @@ export default function ChatLayout() {
     onToken: (t) => {
       setMsgs((m) => {
         const next = [...m];
-        const idx = next.findIndex((mm) => mm.role === "assistant" && mm.content === "" && !mm.error);
+        // Find the LAST assistant message that hasn't errored
+        let idx = -1;
+        for (let i = next.length - 1; i >= 0; i--) {
+          if (next[i].role === "assistant" && !next[i].error) {
+            idx = i;
+            break;
+          }
+        }
         if (idx >= 0) {
           next[idx] = { ...next[idx], content: (next[idx].content || "") + t, sources: streamSources };
         }
@@ -37,7 +45,14 @@ export default function ChatLayout() {
     onDone: (full) => {
       setMsgs((m) => {
         const next = [...m];
-        const idx = next.findIndex((mm) => mm.role === "assistant" && mm.content && !mm.error);
+        // Find the LAST assistant message that hasn't errored
+        let idx = -1;
+        for (let i = next.length - 1; i >= 0; i--) {
+          if (next[i].role === "assistant" && !next[i].error) {
+            idx = i;
+            break;
+          }
+        }
         if (idx >= 0) {
           next[idx] = { ...next[idx], content: full, sources: streamSources };
         }
@@ -72,11 +87,9 @@ export default function ChatLayout() {
     if (!q.trim()) return;
 
     const userMsg: Message = { role: "user", content: q, time: timeNow() };
-    setMsgs((m: Message[]) => [
-      ...m,
-      userMsg,
-      { role: "assistant", content: "", time: timeNow(), error: undefined },
-    ]);
+    const assistantMsg: Message = { role: "assistant", content: "", time: timeNow(), error: undefined };
+    
+    setMsgs((m: Message[]) => [...m, userMsg, assistantMsg]);
     setQ("");
     setStreamingError(null);
     setStreamSources([]);
@@ -97,7 +110,14 @@ export default function ChatLayout() {
         const { data, status, ok } = { data: payload, status: res.status, ok: res.ok };
         setMsgs((prev: Message[]) => {
           const next = [...prev];
-          const idx = next.findIndex((mm) => mm.role === "assistant" && !mm.content && !mm.error);
+          // Find the LAST assistant message that's empty (most recent)
+          let idx = -1;
+          for (let i = next.length - 1; i >= 0; i--) {
+            if (next[i].role === "assistant" && !next[i].content && !next[i].error) {
+              idx = i;
+              break;
+            }
+          }
           if (idx >= 0) {
             const hasAnswer = !!(data.answer && data.answer.length > 0);
             const errText = data.error ? String(data.error) : (!ok ? `HTTP ${status}` : "");
@@ -112,7 +132,14 @@ export default function ChatLayout() {
       } catch (err2: any) {
         setMsgs((prev: Message[]) => {
           const next = [...prev];
-          const idx = next.findIndex((mm) => mm.role === "assistant" && !mm.content && !mm.error);
+          // Find the LAST assistant message that's empty (most recent)
+          let idx = -1;
+          for (let i = next.length - 1; i >= 0; i--) {
+            if (next[i].role === "assistant" && !next[i].content && !next[i].error) {
+              idx = i;
+              break;
+            }
+          }
           if (idx >= 0) next[idx] = { ...next[idx], content: "", error: err2?.message || "Request failed" };
           return next;
         });
@@ -206,14 +233,14 @@ export default function ChatLayout() {
                 Welcome to Kenbright GPT
               </h2>
               <p className="max-w-lg text-sm sm:text-base leading-relaxed text-[rgb(var(--muted-foreground))] mb-7">
-                Ask anything and I'll search across curated Insurance Act resources to give concise, cited answers. Try asking about regulatory definitions, compliance obligations, or specific clauses.
+                Ask anything and I'll search across curated Insurance Act and IFRS-17 resources to give concise, cited answers. Try asking about regulatory definitions, compliance obligations, contract measurement, or specific clauses.
               </p>
               <div className="flex flex-wrap items-center justify-center gap-2 mb-10">
                 {[
                   "What are the capital requirements?",
+                  "Explain IFRS-17 CSM calculation",
                   "Summarize duties of an insurer",
-                  "Explain section 57 in simple terms",
-                  "Key compliance deadlines?",
+                  "IFRS-17 loss component approach",
                 ].map((ex) => (
                   <button
                     key={ex}
@@ -241,15 +268,21 @@ export default function ChatLayout() {
                   {!isUser && !hasError && (
                     <IconCluster onCopy={() => navigator.clipboard.writeText(m.content)} />
                   )}
-                  <div className="whitespace-pre-wrap chat-content relative">
+                  <div className="chat-content relative">
                     {m.content ? (
-                      m.content
+                      isUser ? (
+                        <div className="whitespace-pre-wrap text-[rgb(var(--foreground))]">
+                          {m.content}
+                        </div>
+                      ) : (
+                        <MarkdownResponse content={m.content} />
+                      )
                     ) : hasError ? (
                       `Error: ${m.error}`
                     ) : (
                       <>
-                        {/* Premium pre-stream animation */}
-                        {streaming && i === msgs.length - 1 ? (
+                        {/* Show streaming indicator only for the last assistant message being streamed */}
+                        {streaming && i === msgs.length - 1 && m.role === "assistant" ? (
                           <div className="flex items-center gap-3 py-2">
                             <div className="relative h-5 w-5">
                               <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-indigo-500 via-sky-500 to-teal-500 animate-pulse opacity-30" />
@@ -288,14 +321,9 @@ export default function ChatLayout() {
         onKeyDown={onKeyDown}
         onSubmit={onSubmit}
         disabled={loading || streaming}
-  placeholder="Ask me anything…"
+        placeholder="Ask about Insurance Act, IFRS-17, or compliance topics…"
       />
-      {streaming && (
-        <div className="text-xs text-[rgb(var(--muted-foreground))] flex items-center gap-1 px-1 -mt-2">
-          <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75" /><span className="relative inline-flex rounded-full h-2 w-2 bg-sky-500" /></span>
-          Streaming…
-        </div>
-      )}
+      {/* Remove the bottom streaming indicator - it's now shown in the message */}
     </div>
   );
 }

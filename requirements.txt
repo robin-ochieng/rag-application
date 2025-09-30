@@ -10,3 +10,4 @@ slowapi
 langchain-community
 pypdf
 watchdog
+cryptography>=42.0.0

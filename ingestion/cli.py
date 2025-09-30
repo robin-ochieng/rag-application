@@ -1,9 +1,10 @@
 import argparse
 import glob
 import hashlib
+import json
 import os
 from pathlib import Path
-from typing import Iterable, List, Tuple
+from typing import Iterable, List, Tuple, Dict
 
 from dotenv import load_dotenv
 from langchain_community.document_loaders import TextLoader, PyPDFLoader
@@ -205,6 +206,30 @@ def ingest(
         store.add_documents(unique_chunks, ids=ids)
     except Exception as e:  # pragma: no cover
         _fail(f"Error upserting to Pinecone: {e}")
+
+    # Build a manifest (per source file counts)
+    counts: Dict[str, int] = {}
+    for ch in unique_chunks:
+        fn = ch.metadata.get("file_name") or ch.metadata.get("source_path") or "unknown"
+        counts[fn] = counts.get(fn, 0) + 1
+
+    manifest = {
+        "namespace": namespace,
+        "generated_at": __import__("datetime").datetime.utcnow().isoformat() + "Z",
+        "total_unique_chunks": len(unique_chunks),
+        "files": [
+            {"file_name": fn, "chunks": n} for fn, n in sorted(counts.items())
+        ],
+    }
+    try:
+        manifests_dir = Path("data/_manifests")
+        manifests_dir.mkdir(parents=True, exist_ok=True)
+        out_path = manifests_dir / f"{namespace or 'default'}.json"
+        with out_path.open("w", encoding="utf-8") as f:
+            json.dump(manifest, f, indent=2)
+        print(f"Wrote manifest to {out_path}")
+    except Exception as e:  # pragma: no cover
+        print(f"[warn] unable to write manifest: {e}")
 
     return (len(chunks), len(unique_chunks))
 

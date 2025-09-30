@@ -7,7 +7,7 @@ export function MessageCard({ children, side }: PropsWithChildren<{ side: "left"
   return (
     <div className={`flex ${isRight ? "justify-end" : "justify-start"}`}>
       <div
-        className={`relative max-w-[80ch] w-full rounded-[var(--radius-card)] border border-[rgb(var(--border))] p-5 shadow-[var(--shadow-card)] transition-all duration-200 bg-[rgb(var(--card))] text-[rgb(var(--card-foreground))] hover:shadow-lg`}
+        className={`relative max-w-[80ch] w-full rounded-[var(--radius-card)] border border-[rgb(var(--border))] p-6 shadow-[var(--shadow-card)] transition-all duration-200 bg-[rgb(var(--card))] text-[rgb(var(--card-foreground))] hover:shadow-xl hover:border-[rgb(var(--primary))] hover:border-opacity-20`}
       >
         {children}
       </div>

@@ -234,3 +234,87 @@ Notes:
 - Uses OpenAI `text-embedding-3-large` to match the RAG setup.
 - Aborts if Pinecone index dimension does not match the embedding size.
 - Metadata includes `source` (relative path), `page`, and chunk `sha1` for traceability.
+
+## Ingestion & Namespace Audit Guide
+
+This project supports multiple Pinecone namespaces (e.g. `insurance-act`, `ifrs-17`). Below is the robust workflow for adding new document sets and verifying they are fully ingested.
+
+### 1. Install / Update Dependencies
+
+`cryptography` is required for some PDFs (object streams / encryption). Ensure your virtualenv is active and run:
+
+```powershell
+pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+### 2. Ingest a Namespace
+
+```powershell
+python -m ingestion.cli --namespace ifrs-17 --pattern "data/ifrs-17/*.pdf"
+```
+
+Output example:
+```
+Created 812 chunks; upserted 790 unique chunks to Pinecone (namespace='ifrs-17').
+Wrote manifest to data/_manifests/ifrs-17.json
+```
+
+If you see a failure referencing `cryptography`, ensure it is installed and retry.
+
+### 3. Manifest
+
+Each ingestion run writes `data/_manifests/<namespace>.json` containing per-file chunk counts and a timestamp. Commit this if you want traceability.
+
+### 4. Quick Retrieval Sanity Check
+
+Use `quick_check.py` to see which files surface for one or more queries:
+
+```powershell
+python quick_check.py --queries "IFRS 17 simplified approach,CSM calculation" --k 40
+```
+
+Absence of some files here does not necessarily mean they weren’t ingested (it’s relevance ranked).
+
+### 5. Namespace Audit Script
+
+For a deeper check (sampling-based) run:
+
+```powershell
+python scripts/audit_namespace.py --namespace ifrs-17 --expect-pattern "data/ifrs-17/*.pdf" --top-k 40
+```
+
+It compares:
+- Manifest file list
+- Sampled retrieval metadata (multiple broad probe queries)
+- Files on disk matching the pattern
+
+If any expected file is entirely absent from both the manifest and sampled retrieval results, the script exits non-zero.
+
+### 6. Environment Variables for Multi-Namespace Retrieval
+
+Set `INDEX_NAMESPACES` to a comma-separated list to allow queries across multiple namespaces:
+
+```powershell
+$env:INDEX_NAMESPACES = "insurance-act,ifrs-17"
+```
+
+The retrieval code splits the requested `k_total` across namespaces and merges results with simple de-duplication.
+
+### 7. Re-Ingestion / Updates
+
+If you replace PDFs, re-run the ingestion command. Chunks are keyed by content hash so unchanged text won’t duplicate.
+
+### 8. Troubleshooting
+
+| Symptom | Likely Cause | Fix |
+|---------|--------------|-----|
+| `pypdf.errors.DependencyError: cryptography>=3.1 is required` | Missing cryptography | Install dependency and retry |
+| Zero matches from a namespace | Wrong namespace or no docs ingested | Verify manifest existence and ingestion output |
+| Duplicated file names in retrieval | Multiple ranked chunks from same file | Normal behavior |
+| File missing from quick check but present in manifest | Query not relevant enough | Increase `--k` or broaden queries |
+
+### 9. CI / Future Automation
+
+You can wire `scripts/audit_namespace.py` into CI to block merges if ingestion drifts from expected source files.
+

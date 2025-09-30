@@ -20,6 +20,7 @@ if not os.getenv("PINECONE_API_KEY") and os.getenv("PINECONE_API_KEY2"):
 
 
 def _ns_value() -> str:
+    """Backward-compatible single namespace accessor (legacy)."""
     raw = os.getenv("INDEX_NAMESPACE")
     if not raw:
         return "insurance-act"
@@ -29,18 +30,54 @@ def _ns_value() -> str:
     return s
 
 
+def _namespaces() -> List[str]:
+    """Return list of namespaces to query.
+
+    Uses env var INDEX_NAMESPACES (comma separated). Falls back to INDEX_NAMESPACE or default.
+    Example: INDEX_NAMESPACES="insurance-act,ifrs-17".
+    """
+    raw = os.getenv("INDEX_NAMESPACES")
+    if not raw:
+        return [_ns_value()]
+    parts = [p.strip() for p in raw.split(",") if p.strip()]
+    return parts or [_ns_value()]
+
+
 def build_chain():
     embeddings = OpenAIEmbeddings(model="text-embedding-3-large")
-    llm = ChatOpenAI(temperature=0, model="gpt-4o")
-    retrieval_prompt = hub.pull("langchain-ai/retrieval-qa-chat")
-    combine_docs_chain = create_stuff_documents_chain(llm=llm, prompt=retrieval_prompt)
-    return {"embeddings": embeddings, "combine": combine_docs_chain, "llm": llm, "prompt": retrieval_prompt}
+    llm = ChatOpenAI(temperature=0, model="gpt-4o", streaming=True)  # ✅ Enable streaming
+    
+    # Enhanced prompt template for better formatting
+    from langchain_core.prompts import ChatPromptTemplate
+    
+    enhanced_prompt = ChatPromptTemplate.from_messages([
+        ("system", """You are a helpful AI assistant specializing in Insurance Act and IFRS-17 regulatory guidance. 
+
+When answering questions, please:
+- Use clear, well-structured markdown formatting
+- Use headings (##, ###) to organize complex topics
+- Use bullet points or numbered lists for multiple items
+- Use **bold** for important terms and concepts
+- Use `code formatting` for specific regulatory references, sections, or technical terms
+- Use > blockquotes for direct regulatory quotations
+- Structure your response with clear logical flow
+
+Provide accurate, comprehensive answers based on the provided context."""),
+        ("human", """Context information:
+{context}
+
+Question: {input}
+
+Please provide a comprehensive, well-formatted answer based on the context above.""")
+    ])
+    
+    combine_docs_chain = create_stuff_documents_chain(llm=llm, prompt=enhanced_prompt)
+    return {"embeddings": embeddings, "combine": combine_docs_chain, "llm": llm, "prompt": enhanced_prompt}
 
 CHAIN = build_chain()
 
 
-def _retrieve_from_pinecone(query: str, k: int = 6) -> List[Document]:
-    ns = _ns_value()
+def _retrieve_from_pinecone_single(query: str, namespace: str, k: int) -> List[Document]:
     index_name = os.getenv("INDEX_NAME2")
     if not index_name:
         return []
@@ -48,12 +85,11 @@ def _retrieve_from_pinecone(query: str, k: int = 6) -> List[Document]:
     pc = Pinecone(api_key=pc_key)
     index = pc.Index(index_name)
     vec = CHAIN["embeddings"].embed_query(query)
-    res = index.query(vector=vec, top_k=k, include_metadata=True, namespace=ns)
+    res = index.query(vector=vec, top_k=k, include_metadata=True, namespace=namespace)
     docs: List[Document] = []
     for m in res.get("matches") or []:
         md = m.get("metadata") or {}
         text = md.get("text") or ""
-        # Ensure minimal metadata fields are strings/ints
         meta = {}
         for k2, v in md.items():
             if v is None:
@@ -62,13 +98,45 @@ def _retrieve_from_pinecone(query: str, k: int = 6) -> List[Document]:
                 meta[k2] = v
             else:
                 meta[k2] = str(v)
+        meta.setdefault("namespace", namespace)
         docs.append(Document(page_content=text, metadata=meta))
     return docs
 
 
+def retrieve_multi(query: str, k_total: int = 6) -> List[Document]:
+    """Retrieve across all configured namespaces and merge results.
+
+    Strategy: allocate roughly even k across namespaces, at least 1 each.
+    """
+    nspaces = _namespaces()
+    if not nspaces:
+        return []
+    per = max(1, k_total // len(nspaces))
+    remainder = max(0, k_total - per * len(nspaces))
+    all_docs: List[Document] = []
+    for i, ns in enumerate(nspaces):
+        k_ns = per + (1 if i < remainder else 0)
+        try:
+            docs = _retrieve_from_pinecone_single(query, ns, k_ns)
+            all_docs.extend(docs)
+        except Exception as e:  # pragma: no cover
+            print(f"[warn] retrieval failed for namespace '{ns}': {e}")
+
+    # Simple de-dupe by snippet start + source_path if present
+    seen: set[tuple] = set()
+    uniq: List[Document] = []
+    for d in all_docs:
+        key = (d.page_content[:120], d.metadata.get("source") or d.metadata.get("file_name"))
+        if key in seen:
+            continue
+        seen.add(key)
+        uniq.append(d)
+    return uniq
+
+
 def ask(query: str) -> Dict:
-    """Run a query via direct Pinecone retrieval and LLM combine, return answer + sources."""
-    docs = _retrieve_from_pinecone(query, k=6)
+    """Run a query via multi-namespace Pinecone retrieval and LLM combine."""
+    docs = retrieve_multi(query, k_total=6)
     result = CHAIN["combine"].invoke({"input": query, "context": docs})
     if isinstance(result, dict):
         answer = result.get("answer") or result.get("output_text") or ""
@@ -93,7 +161,7 @@ async def ask_stream(query: str) -> AsyncGenerator[Dict, None]:
       {"type": "error", "message": str}
     """
     try:
-        docs = _retrieve_from_pinecone(query, k=6)
+        docs = retrieve_multi(query, k_total=6)
         sources: List[Dict] = []
         for doc in docs:
             snippet = (doc.page_content or "").strip().replace("\n", " ")
@@ -114,6 +182,7 @@ async def ask_stream(query: str) -> AsyncGenerator[Dict, None]:
         formatted = prompt.format_messages(input=query, context=context_block)  # returns list[BaseMessage]
 
         full_answer_parts: List[str] = []
+        token_count = 0
         async for chunk in llm.astream(formatted):  # chunk is an AIMessageChunk
             token = getattr(chunk, "content", None)
             if not token:
@@ -124,7 +193,9 @@ async def ask_stream(query: str) -> AsyncGenerator[Dict, None]:
             else:
                 token_text = str(token)
             if token_text:
+                token_count += 1
                 full_answer_parts.append(token_text)
+                # ✅ Yield immediately for each token
                 yield {"type": "token", "value": token_text}
         full_answer = "".join(full_answer_parts)
         yield {"type": "done", "answer": full_answer}

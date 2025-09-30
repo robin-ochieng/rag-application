@@ -132,12 +132,25 @@ async def ask_stream_route(
         raise HTTPException(status_code=401, detail="Unauthorized")
 
     async def event_gen() -> AsyncGenerator[bytes, None]:
-        async for evt in ask_stream(req.q):  # type: ignore
-            line = json.dumps(evt, ensure_ascii=False)
-            yield f"data: {line}\n\n".encode("utf-8")
-        yield b"data: [DONE]\n\n"
+        try:
+            async for evt in ask_stream(req.q):  # type: ignore
+                line = json.dumps(evt, ensure_ascii=False)
+                yield f"data: {line}\n\n".encode("utf-8")
+            yield b"data: [DONE]\n\n"
+        except Exception as e:
+            # Send error event if streaming fails
+            error_line = json.dumps({"type": "error", "message": str(e)}, ensure_ascii=False)
+            yield f"data: {error_line}\n\n".encode("utf-8")
 
-    return StreamingResponse(event_gen(), media_type="text/event-stream")
+    return StreamingResponse(
+        event_gen(), 
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # Disable nginx buffering
+        }
+    )
 
 
 @app.post("/chat")
