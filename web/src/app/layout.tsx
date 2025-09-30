@@ -4,6 +4,7 @@ import "./globals.css";
 import "highlight.js/styles/github-dark.css";
 import NavBar from "@/components/NavBar";
 import Providers from "./providers";
+import { AuthProvider } from "@/contexts/AuthContext";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
@@ -40,8 +41,10 @@ export default function RootLayout({
       </head>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen flex flex-col bg-[rgb(var(--background))] text-[rgb(var(--foreground))]`}>
         <Providers>
-          <NavBar />
-          <main className="flex-1">{children}</main>
+          <AuthProvider>
+            <NavBar />
+            <main className="flex-1">{children}</main>
+          </AuthProvider>
         </Providers>
       </body>
     </html>

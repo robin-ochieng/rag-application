@@ -1,6 +1,11 @@
 "use client";
-import ChatLayout from "@/components/ChatLayout";
+import ChatLayoutWithStorage from "@/components/ChatLayoutWithStorage";
+import AuthGuard from "@/components/auth/AuthGuard";
 
 export default function ChatPage() {
-  return <ChatLayout />;
+  return (
+    <AuthGuard>
+      <ChatLayoutWithStorage />
+    </AuthGuard>
+  );
 }
