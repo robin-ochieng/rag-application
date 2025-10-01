@@ -17,20 +17,22 @@ export default function DatabaseStatus() {
 
   const checkDatabase = async () => {
     try {
-      // Test if we can query the chats table
+      // Test if we can query the chats table with the new column
       const { data, error } = await supabase
         .from('chats')
-        .select('id')
+        .select('id, title_auto_generated')
         .limit(1);
 
       if (error) {
         if (error.message.includes('relation "public.chats" does not exist')) {
           setStatus('❌ Database tables not created');
+        } else if (error.message.includes('column "title_auto_generated" does not exist')) {
+          setStatus('⚠️ Database needs migration');
         } else {
           setStatus(`❌ Database error: ${error.message}`);
         }
       } else {
-        setStatus('✅ Database ready');
+        setStatus('✅ Database ready with smart titles');
       }
     } catch (err: any) {
       setStatus(`❌ Connection failed: ${err.message}`);
@@ -62,9 +64,22 @@ export default function DatabaseStatus() {
           <div className="mb-2">
             <strong>Setup Required:</strong>
           </div>
-          <div className="mb-1">1. Go to Supabase Dashboard</div>
-          <div className="mb-1">2. Open SQL Editor</div>
-          <div className="mb-1">3. Run supabase-schema.sql</div>
+          {status.includes('Database tables not created') ? (
+            <>
+              <div className="mb-1">1. Go to Supabase Dashboard</div>
+              <div className="mb-1">2. Open SQL Editor</div>
+              <div className="mb-1">3. Run supabase-schema.sql</div>
+            </>
+          ) : status.includes('needs migration') ? (
+            <>
+              <div className="mb-1">1. Go to Supabase Dashboard</div>
+              <div className="mb-1">2. Open SQL Editor</div>
+              <div className="mb-1">3. Run supabase-migration-title-column.sql</div>
+              <div className="mb-2 text-yellow-600">⚠️ This adds smart title generation</div>
+            </>
+          ) : (
+            <div className="mb-1 text-green-600">✅ Smart titles ready!</div>
+          )}
           <button
             onClick={checkDatabase}
             className="mt-2 px-2 py-1 bg-[rgb(var(--primary))] text-white rounded text-xs w-full"

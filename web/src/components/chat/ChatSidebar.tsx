@@ -30,7 +30,8 @@ export default function ChatSidebar({ currentChatId, onChatSelect, onNewChat }: 
 
   const handleSaveTitle = async (chatId: string) => {
     if (editTitle.trim()) {
-      await updateChatTitle(chatId, editTitle.trim());
+      // Pass true to indicate this is a manual edit
+      await updateChatTitle(chatId, editTitle.trim(), true);
     }
     setEditingChatId(null);
     setEditTitle('');
@@ -120,7 +121,17 @@ export default function ChatSidebar({ currentChatId, onChatSelect, onNewChat }: 
                     />
                   ) : (
                     <>
-                      <p className="text-sm font-medium truncate">{chat.title}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-medium truncate flex-1">{chat.title}</p>
+                        {chat.title_auto_generated && (
+                          <span 
+                            className="text-xs text-[rgb(var(--muted-foreground))] opacity-60"
+                            title="Auto-generated title"
+                          >
+                            🤖
+                          </span>
+                        )}
+                      </div>
                       <p className="text-xs text-[rgb(var(--muted-foreground))] mt-1">
                         {formatDate(chat.updated_at)}
                       </p>

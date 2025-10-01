@@ -30,7 +30,7 @@ export default function ChatLayoutWithStorage() {
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
   
   // Chat hooks
-  const { createChat } = useChats();
+  const { createChat, generateTitleFromFirstMessage } = useChats();
   const { messages: dbMessages, addMessage } = useMessages(currentChatId);
   
   const { start: startStream, stop: stopStream, streaming, answer: streamAnswer } = useStreamAnswer({
@@ -157,6 +157,13 @@ export default function ChatLayoutWithStorage() {
       addMessage(userQuestion, 'user').catch(error => {
         console.error('Failed to save user message:', error);
       });
+      
+      // Generate chat title from first message if this is a new chat
+      if (msgs.length === 0) { // This will be the first message
+        generateTitleFromFirstMessage(chatId, userQuestion).catch(error => {
+          console.error('Failed to generate chat title:', error);
+        });
+      }
     }
 
     // Start streaming
