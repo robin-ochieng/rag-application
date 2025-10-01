@@ -74,14 +74,17 @@ export function useChats() {
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Database error creating chat:', error);
+        return null; // Return null instead of throwing to allow graceful fallback
+      }
       
       // Refresh chats list
       await fetchChats();
       return data;
     } catch (err: any) {
-      setError(err.message);
-      return null;
+      console.error('Failed to create chat:', err);
+      return null; // Return null instead of throwing to allow graceful fallback
     }
   };
 
@@ -201,7 +204,10 @@ export function useMessages(chatId: string | null) {
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Database error saving message:', error);
+        return null; // Return null instead of throwing to allow graceful fallback
+      }
       
       // Update chat's updated_at timestamp
       await supabase
@@ -211,8 +217,8 @@ export function useMessages(chatId: string | null) {
       
       return data;
     } catch (err: any) {
-      setError(err.message);
-      return null;
+      console.error('Failed to save message:', err);
+      return null; // Return null instead of throwing to allow graceful fallback
     }
   };
 

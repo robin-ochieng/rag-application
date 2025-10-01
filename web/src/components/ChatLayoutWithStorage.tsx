@@ -52,11 +52,6 @@ export default function ChatLayoutWithStorage() {
       });
     },
     onDone: async (full) => {
-      // Save assistant message to database
-      if (currentChatId) {
-        await addMessage(full, 'assistant');
-      }
-      
       setMsgs((m) => {
         const next = [...m];
         let idx = -1;
@@ -71,6 +66,15 @@ export default function ChatLayoutWithStorage() {
         }
         return next;
       });
+      
+      // Save assistant message to database after UI update
+      if (currentChatId && full) {
+        try {
+          await addMessage(full, 'assistant');
+        } catch (error) {
+          console.error('Failed to save assistant message:', error);
+        }
+      }
     },
     onError: (msg) => {
       setStreamingError(msg);
@@ -82,7 +86,7 @@ export default function ChatLayoutWithStorage() {
 
   // Load messages from database when chat changes
   useEffect(() => {
-    if (dbMessages.length > 0) {
+    if (currentChatId && dbMessages.length > 0) {
       const convertedMessages: Message[] = dbMessages.map(msg => ({
         role: msg.role as "user" | "assistant",
         content: msg.content,
@@ -92,10 +96,11 @@ export default function ChatLayoutWithStorage() {
         followUps: []
       }));
       setMsgs(convertedMessages);
-    } else if (currentChatId) {
-      // Clear messages if switching to empty chat
+    } else if (currentChatId && dbMessages.length === 0) {
+      // Only clear if we explicitly selected a chat with no messages
       setMsgs([]);
     }
+    // Don't clear messages if currentChatId is null (new chat mode)
   }, [dbMessages, currentChatId]);
 
   // Auto-scroll
@@ -123,31 +128,39 @@ export default function ChatLayoutWithStorage() {
     if (loading || streaming) return;
     if (!q.trim()) return;
 
-    // Create new chat if none selected
+    // Create new chat if none selected (only if database is available)
     let chatId = currentChatId;
     if (!chatId) {
-      const newChat = await createChat();
-      if (newChat) {
-        chatId = newChat.id;
-        setCurrentChatId(chatId);
+      try {
+        const newChat = await createChat();
+        if (newChat) {
+          chatId = newChat.id;
+          setCurrentChatId(chatId);
+        }
+        // If chat creation fails, continue without chat storage
+      } catch (error) {
+        console.error('Failed to create chat, continuing without storage:', error);
       }
-    }
-
-    // Save user message to database
-    if (chatId) {
-      await addMessage(q.trim(), 'user');
     }
 
     const userMsg: Message = { role: "user", content: q, time: timeNow() };
     const assistantMsg: Message = { role: "assistant", content: "", time: timeNow(), error: undefined };
     
     setMsgs((m: Message[]) => [...m, userMsg, assistantMsg]);
+    const userQuestion = q.trim();
     setQ("");
     setStreamingError(null);
     setStreamSources([]);
 
-    // Attempt streaming first
-    startStream(userMsg.content).catch(async (e) => {
+    // Save user message to database (non-blocking)
+    if (chatId) {
+      addMessage(userQuestion, 'user').catch(error => {
+        console.error('Failed to save user message:', error);
+      });
+    }
+
+    // Start streaming
+    startStream(userQuestion).catch(async (e) => {
       console.warn("Streaming failed, falling back", e);
       setLoading(true);
       try {
@@ -159,12 +172,6 @@ export default function ChatLayoutWithStorage() {
         });
         const payload = await res.json().catch(() => ({ answer: "", sources: [], error: "Invalid JSON" }));
         const { data, status, ok } = { data: payload, status: res.status, ok: res.ok };
-        
-        // Save assistant response to database
-        const assistantResponse = data.answer || "";
-        if (chatId && assistantResponse) {
-          await addMessage(assistantResponse, 'assistant');
-        }
         
         setMsgs((prev: Message[]) => {
           const next = [...prev];
@@ -186,6 +193,14 @@ export default function ChatLayoutWithStorage() {
           }
           return next;
         });
+        
+        // Save assistant response to database (non-blocking)
+        const assistantResponse = data.answer || "";
+        if (chatId && assistantResponse) {
+          addMessage(assistantResponse, 'assistant').catch(error => {
+            console.error('Failed to save assistant message:', error);
+          });
+        }
       } catch (err2: any) {
         setMsgs((prev: Message[]) => {
           const next = [...prev];

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 
 interface AuthFormProps {
@@ -16,6 +17,7 @@ export default function AuthForm({ mode, onToggleMode }: AuthFormProps) {
   const [error, setError] = useState<string | null>(null);
   
   const { signIn, signUp } = useAuth();
+  const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -32,6 +34,9 @@ export default function AuthForm({ mode, onToggleMode }: AuthFormProps) {
 
       if (result.error) {
         setError(result.error.message);
+      } else {
+        // Successful authentication - redirect to chat
+        router.push('/chat');
       }
     } catch (err: any) {
       setError(err.message);

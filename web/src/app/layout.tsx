@@ -5,6 +5,8 @@ import "highlight.js/styles/github-dark.css";
 import NavBar from "@/components/NavBar";
 import Providers from "./providers";
 import { AuthProvider } from "@/contexts/AuthContext";
+import AuthDebug from "@/components/AuthDebug";
+import DatabaseStatus from "@/components/DatabaseStatus";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
@@ -44,6 +46,8 @@ export default function RootLayout({
           <AuthProvider>
             <NavBar />
             <main className="flex-1">{children}</main>
+            <AuthDebug />
+            <DatabaseStatus />
           </AuthProvider>
         </Providers>
       </body>
