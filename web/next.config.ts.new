@@ -1,0 +1,32 @@
+import type { NextConfig } from "next";
+
+const nextConfig: NextConfig = {
+  /* config options here */
+  experimental: {
+    optimizePackageImports: ['next-themes']
+  },
+  typescript: {
+    ignoreBuildErrors: false,
+  },
+  eslint: {
+    ignoreDuringBuilds: false,
+  },
+  output: 'standalone',
+  // Configure API rewrites for development and production
+  async rewrites() {
+    // In development with dev:all, backend runs on localhost:8000
+    // In production, API routes go to Vercel serverless functions
+    const apiUrl = process.env.NODE_ENV === 'production' 
+      ? '/api'  // Use Vercel's serverless functions in production
+      : process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+      
+    return [
+      {
+        source: '/api/:path*',
+        destination: `${apiUrl}/:path*`,
+      },
+    ];
+  },
+};
+
+export default nextConfig;

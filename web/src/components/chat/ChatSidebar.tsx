@@ -68,7 +68,7 @@ export default function ChatSidebar({ currentChatId, onChatSelect, onNewChat }: 
       <div className="p-4 border-b border-[rgb(var(--border))]">
         <button
           onClick={handleNewChat}
-          className="w-full flex items-center gap-3 px-3 py-2 text-sm font-medium text-[rgb(var(--foreground))] bg-[rgb(var(--primary))] hover:bg-[rgb(var(--primary))]/90 rounded-lg transition-colors"
+          className="w-full flex items-center gap-3 px-3 py-2 text-sm font-semibold text-[rgb(var(--primary-foreground))] bg-[rgb(var(--primary))] hover:bg-[rgb(var(--primary))]/90 rounded-lg transition-colors"
         >
           <PlusIcon className="h-4 w-4" />
           New Chat
