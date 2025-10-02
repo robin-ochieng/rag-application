@@ -12,7 +12,8 @@
       "src": "api/index.py",
       "use": "@vercel/python",
       "config": {
-        "maxLambdaSize": "50mb"
+        "maxLambdaSize": "50mb",
+        "runtime": "python3.9"
       }
     }
   ],
@@ -26,13 +27,11 @@
       "dest": "/web/$1"
     }
   ],
-  "env": {
-    "PYTHONPATH": "."
-  },
   "functions": {
     "api/index.py": {
       "runtime": "python3.9",
-      "maxDuration": 30
+      "maxDuration": 10,
+      "memory": 1024
     }
   },
   "regions": ["iad1"]
