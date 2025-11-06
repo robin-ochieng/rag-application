@@ -2,7 +2,6 @@ import os
 from typing import Dict, List, AsyncGenerator
 
 from dotenv import load_dotenv
-from langchain import hub
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain_pinecone import PineconeVectorStore
 from langchain.schema import Document

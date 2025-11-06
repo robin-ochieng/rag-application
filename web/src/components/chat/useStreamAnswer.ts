@@ -1,13 +1,15 @@
 import { useCallback, useRef, useState } from "react";
+import { Citation } from '@/types/citations';
+import { sourcesToCitations, normalizeCitations } from '@/lib/citations';
 
 export type StreamEvent =
-  | { type: "meta"; sources: any[] }
+  | { type: "meta"; sources: any[]; citations?: Citation[] }
   | { type: "token"; value: string }
   | { type: "done"; answer: string }
   | { type: "error"; message: string };
 
 interface UseStreamAnswerOptions {
-  onMeta?: (sources: any[]) => void;
+  onMeta?: (sources: any[], citations?: Citation[]) => void;
   onToken?: (t: string) => void;
   onDone?: (answer: string) => void;
   onError?: (msg: string) => void;
@@ -54,7 +56,9 @@ export function useStreamAnswer(opts: UseStreamAnswerOptions = {}) {
           try {
             const evt: StreamEvent = JSON.parse(jsonPart);
             if (evt.type === "meta") {
-              opts.onMeta?.(evt.sources);
+              // Convert sources to citations
+              const citations = normalizeCitations(sourcesToCitations(evt.sources));
+              opts.onMeta?.(evt.sources, citations);
             } else if (evt.type === "token") {
               setAnswer(a => a + evt.value);
               opts.onToken?.(evt.value);

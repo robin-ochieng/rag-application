@@ -237,10 +237,10 @@ export default function ChatLayout() {
               </p>
               <div className="flex flex-wrap items-center justify-center gap-2 mb-10">
                 {[
-                  "What are the capital requirements?",
-                  "Explain IFRS-17 CSM calculation",
-                  "Summarize duties of an insurer",
-                  "IFRS-17 loss component approach",
+                  "How do I optimize IFRS-17 CSM calculations for profitability?",
+                  "What are the latest regulatory capital adequacy requirements?",
+                  "Guide me through risk adjustment methodologies under IFRS-17",
+                  "How to implement loss component recognition for complex contracts?",
                 ].map((ex) => (
                   <button
                     key={ex}

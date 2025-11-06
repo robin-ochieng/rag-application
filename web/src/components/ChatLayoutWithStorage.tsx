@@ -3,22 +3,14 @@ import { useEffect, useRef, useState, type FormEvent, KeyboardEvent, type Change
 import { useStreamAnswer } from "@/components/chat/useStreamAnswer";
 import { FollowUps, IconCluster, MessageCard, Skeleton } from "./chat/Card";
 import CitationsDisclosure from "@/components/chat/CitationsDisclosure";
+import { CitationsToggle } from "@/components/chat/CitationsPanel";
 import Composer from "@/components/chat/Composer";
 import MarkdownResponse from "@/components/chat/MarkdownResponse";
 import ChatSidebar from "@/components/chat/ChatSidebar";
 import { useChats, useMessages } from "@/hooks/useChat";
 import { useAuth } from "@/contexts/AuthContext";
-
-// Minimal message shape
-type Message = {
-  role: "user" | "assistant";
-  content: string;
-  time: string;
-  sources?: { snippet?: string; metadata?: Record<string, any> }[];
-  citations?: { id?: string; label?: string; href?: string }[];
-  followUps?: string[];
-  error?: string;
-};
+import { Message, Citation } from "@/types/citations";
+import { sourcesToCitations, normalizeCitations } from "@/lib/citations";
 
 export default function ChatLayoutWithStorage() {
   const { user } = useAuth();
@@ -26,6 +18,7 @@ export default function ChatLayoutWithStorage() {
   const [msgs, setMsgs] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
   const [streamSources, setStreamSources] = useState<any[]>([]);
+  const [streamCitations, setStreamCitations] = useState<Citation[]>([]);
   const [streamingError, setStreamingError] = useState<string | null>(null);
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
   
@@ -34,7 +27,10 @@ export default function ChatLayoutWithStorage() {
   const { messages: dbMessages, addMessage } = useMessages(currentChatId);
   
   const { start: startStream, stop: stopStream, streaming, answer: streamAnswer } = useStreamAnswer({
-    onMeta: (sources) => setStreamSources(sources),
+    onMeta: (sources, citations) => {
+      setStreamSources(sources);
+      setStreamCitations(citations || []);
+    },
     onToken: (t) => {
       setMsgs((m) => {
         const next = [...m];
@@ -46,7 +42,12 @@ export default function ChatLayoutWithStorage() {
           }
         }
         if (idx >= 0) {
-          next[idx] = { ...next[idx], content: (next[idx].content || "") + t, sources: streamSources };
+          next[idx] = { 
+            ...next[idx], 
+            content: (next[idx].content || "") + t, 
+            sources: streamSources,
+            citations: streamCitations
+          };
         }
         return next;
       });
@@ -62,7 +63,12 @@ export default function ChatLayoutWithStorage() {
           }
         }
         if (idx >= 0) {
-          next[idx] = { ...next[idx], content: full, sources: streamSources };
+          next[idx] = { 
+            ...next[idx], 
+            content: full, 
+            sources: streamSources,
+            citations: streamCitations
+          };
         }
         return next;
       });
@@ -195,7 +201,14 @@ export default function ChatLayoutWithStorage() {
             if (!hasAnswer && errText) {
               next[idx] = { ...next[idx], content: "", error: errText };
             } else {
-              next[idx] = { ...next[idx], content: data.answer || "", sources: data.sources || [] };
+              // Convert sources to citations
+              const citations = normalizeCitations(sourcesToCitations(data.sources || []));
+              next[idx] = { 
+                ...next[idx], 
+                content: data.answer || "", 
+                sources: data.sources || [],
+                citations
+              };
             }
           }
           return next;
@@ -321,10 +334,10 @@ export default function ChatLayoutWithStorage() {
                   </p>
                   <div className="flex flex-wrap items-center justify-center gap-2 mb-10">
                     {[
-                      "What are the capital requirements?",
-                      "Explain IFRS-17 CSM calculation",
-                      "Summarize duties of an insurer",
-                      "IFRS-17 loss component approach",
+                      "How do I optimize IFRS-17 CSM calculations for profitability?",
+                      "What are the latest regulatory capital adequacy requirements?",
+                      "Guide me through risk adjustment methodologies under IFRS-17",
+                      "How to implement loss component recognition for complex contracts?",
                     ].map((ex) => (
                       <button
                         key={ex}
@@ -385,7 +398,7 @@ export default function ChatLayoutWithStorage() {
                       <div className="mt-2 text-xs text-[rgb(var(--muted-foreground))]">{m.time}</div>
                       {!isUser && !hasError && (
                         <>
-                          <CitationsDisclosure items={(m.citations as any) || []} />
+                          <CitationsToggle citations={m.citations} className="mt-2" />
                           <FollowUps items={m.followUps as any} onClick={submitFollowUp} />
                         </>
                       )}
