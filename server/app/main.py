@@ -39,6 +39,23 @@ _origins_raw = os.getenv("PUBLIC_CLIENT_ORIGIN", "*")
 ALLOWED_ORIGINS = [o.strip() for o in _origins_raw.split(",") if o.strip()]
 if ALLOWED_ORIGINS == ["*"]:
     ALLOWED_ORIGINS = ["http://localhost:3000", "http://127.0.0.1:3000"]
+
+cloud_run_frontend = os.getenv("CLOUD_RUN_FRONTEND_URL")
+if cloud_run_frontend:
+    ALLOWED_ORIGINS.append(cloud_run_frontend.strip())
+
+extra_origins = os.getenv("ADDITIONAL_CORS_ORIGINS", "")
+if extra_origins:
+    for origin in extra_origins.split(","):
+        value = origin.strip()
+        if value:
+            ALLOWED_ORIGINS.append(value)
+
+unique_origins: list[str] = []
+for origin in ALLOWED_ORIGINS:
+    if origin and origin not in unique_origins:
+        unique_origins.append(origin)
+ALLOWED_ORIGINS = unique_origins
 ORIGIN_REGEX_STR = os.getenv("PUBLIC_CLIENT_ORIGIN_REGEX")
 ORIGIN_REGEX = re.compile(ORIGIN_REGEX_STR) if ORIGIN_REGEX_STR else None
 BACKEND_API_KEY = os.getenv("BACKEND_API_KEY")

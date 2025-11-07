@@ -9,7 +9,7 @@ from typing import Iterable, List, Tuple, Dict
 from dotenv import load_dotenv
 from langchain_community.document_loaders import TextLoader, PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.schema import Document
+from langchain_core.documents import Document
 
 # Prefer modern OpenAI embeddings import, fallback to community if missing
 try:
