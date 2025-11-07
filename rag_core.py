@@ -6,8 +6,8 @@ from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain_pinecone import PineconeVectorStore
 from langchain_core.documents import Document
 from pinecone import Pinecone
-from langchain.chains.combine_documents import create_stuff_documents_chain
-from langchain.chains.retrieval import create_retrieval_chain
+from langchain_core.runnables import chain
+from langchain_core.output_parsers import StrOutputParser
 
 load_dotenv()
 
@@ -44,9 +44,8 @@ def _namespaces() -> List[str]:
 
 def build_chain():
     embeddings = OpenAIEmbeddings(model="text-embedding-3-large")
-    llm = ChatOpenAI(temperature=0, model="gpt-4o", streaming=True)  # ✅ Enable streaming
+    llm = ChatOpenAI(temperature=0, model="gpt-4o", streaming=True)
     
-    # Enhanced prompt template for better formatting
     from langchain_core.prompts import ChatPromptTemplate
     
     enhanced_prompt = ChatPromptTemplate.from_messages([
@@ -70,8 +69,7 @@ Question: {input}
 Please provide a comprehensive, well-formatted answer based on the context above.""")
     ])
     
-    combine_docs_chain = create_stuff_documents_chain(llm=llm, prompt=enhanced_prompt)
-    return {"embeddings": embeddings, "combine": combine_docs_chain, "llm": llm, "prompt": enhanced_prompt}
+    return {"embeddings": embeddings, "llm": llm, "prompt": enhanced_prompt}
 
 CHAIN = build_chain()
 
@@ -136,11 +134,18 @@ def retrieve_multi(query: str, k_total: int = 6) -> List[Document]:
 def ask(query: str) -> Dict:
     """Run a query via multi-namespace Pinecone retrieval and LLM combine."""
     docs = retrieve_multi(query, k_total=6)
-    result = CHAIN["combine"].invoke({"input": query, "context": docs})
-    if isinstance(result, dict):
-        answer = result.get("answer") or result.get("output_text") or ""
-    else:
-        answer = str(result)
+    
+    # Format context from documents
+    context = "\n\n".join([doc.page_content for doc in docs])
+    
+    # Invoke LLM with prompt
+    llm = CHAIN["llm"]
+    prompt = CHAIN["prompt"]
+    messages = prompt.format_messages(input=query, context=context)
+    response = llm.invoke(messages)
+    
+    answer = response.content if hasattr(response, 'content') else str(response)
+    
     sources: List[Dict] = []
     for doc in docs:
         snippet = (doc.page_content or "").strip().replace("\n", " ")
