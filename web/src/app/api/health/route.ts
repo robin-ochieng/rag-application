@@ -3,6 +3,22 @@ import { NextResponse } from "next/server";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+type HealthPayload = Record<string, unknown>;
+
+function parseJson(response: Response): Promise<HealthPayload> {
+  return response.json().catch(() => ({} as HealthPayload));
+}
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (typeof error === "string") {
+    return error;
+  }
+  return "Unknown error";
+}
+
 export async function GET() {
   const backend = process.env.API_URL || "http://127.0.0.1:8000";
   const alt = backend.includes("127.0.0.1")
@@ -12,18 +28,19 @@ export async function GET() {
     : "http://localhost:8000";
   try {
     const res = await fetch(`${backend}/healthz`, { cache: "no-store" });
-    const data = await res.json().catch(() => ({}));
+    const data = await parseJson(res);
     return NextResponse.json({ ok: res.ok, backend, data }, { status: res.ok ? 200 : res.status });
-  } catch (e1: any) {
+  } catch (primaryError: unknown) {
     try {
       const res2 = await fetch(`${alt}/healthz`, { cache: "no-store" });
-      const data2 = await res2.json().catch(() => ({}));
+      const data2 = await parseJson(res2);
       return NextResponse.json(
         { ok: res2.ok, backend: alt, fallbackFrom: backend, data: data2 },
         { status: res2.ok ? 200 : res2.status }
       );
-    } catch (e2: any) {
-      return NextResponse.json({ ok: false, error: e2?.message || e1?.message || String(e2), backend, alt }, { status: 500 });
+    } catch (fallbackError: unknown) {
+      const message = getErrorMessage(fallbackError) || getErrorMessage(primaryError);
+      return NextResponse.json({ ok: false, error: message, backend, alt }, { status: 500 });
     }
   }
 }

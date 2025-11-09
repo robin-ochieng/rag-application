@@ -1,17 +1,68 @@
 "use client";
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent, KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent } from "react";
 import { Citations, FollowUps, IconCluster, MessageCard, Skeleton } from "./chat/Card";
 
 // Minimal message shape
+type SourceMetadataValue = string | number | boolean | null | undefined;
+
+interface SourceMetadata {
+  title?: string;
+  file_path?: string;
+  source?: string;
+  page?: string | number;
+  page_number?: string | number;
+  url?: string;
+  href?: string;
+  [key: string]: SourceMetadataValue;
+}
+
+type Source = {
+  snippet?: string;
+  metadata?: SourceMetadata;
+};
+
+type Citation = { id?: string; label?: string; href?: string };
+
+type ChatApiResponse = {
+  answer?: string;
+  sources?: Source[];
+  citations?: Citation[];
+  followUps?: string[];
+  error?: unknown;
+  backend?: string;
+  ok?: boolean;
+};
+
 type Message = {
   role: "user" | "assistant";
   content: string;
   time: string;
-  sources?: { snippet?: string; metadata?: Record<string, any> }[];
-  citations?: { id?: string; label?: string; href?: string }[];
+  sources?: Source[];
+  citations?: Citation[];
   followUps?: string[];
   error?: string;
 };
+
+type FetchOutcome = {
+  data: ChatApiResponse;
+  status: number;
+  ok: boolean;
+};
+
+type HealthStatus = {
+  ok?: boolean;
+  backend?: string;
+};
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (typeof error === "string") {
+    return error;
+  }
+  return "Unknown error";
+}
 
 export default function ChatLayout() {
   const [q, setQ] = useState("");
@@ -46,14 +97,14 @@ export default function ChatLayout() {
       setState("checking");
       try {
         const res = await fetch("/api/chat", { cache: "no-store" });
-        const data = await res.json().catch(() => ({} as any));
-        if (res.ok && (data?.ok ?? true)) {
+        const data = (await res.json().catch(() => ({}))) as HealthStatus;
+        if (res.ok && (data.ok ?? true)) {
           setState("ok");
         } else {
           setState("warn");
         }
-        setBackend(data?.backend);
-      } catch (_e) {
+        setBackend(typeof data.backend === "string" ? data.backend : undefined);
+      } catch {
         setState("warn");
       } finally {
         setLast(timeNow());
@@ -97,74 +148,89 @@ export default function ChatLayout() {
 
     try {
       // Helper: perform POST with a single retry for transient "fetch failed" cases
-      const doPost = async (): Promise<{ data: any; status: number; ok: boolean }> => {
+      const doPost = async (): Promise<FetchOutcome> => {
         const res = await fetch(apiPath, {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ q: userMsg.content }),
           cache: "no-store",
         });
-        let payload: any = {};
+        let payload: ChatApiResponse = {};
         try {
-          payload = await res.json();
-        } catch (e: any) {
+          payload = (await res.json()) as ChatApiResponse;
+        } catch (jsonError: unknown) {
           const txt = await res.text().catch(() => "");
-          payload = { answer: "", sources: [], error: txt || e?.message || `Invalid JSON (status ${res.status})` };
+          payload = {
+            answer: "",
+            sources: [],
+            error: txt || getErrorMessage(jsonError) || `Invalid JSON (status ${res.status})`,
+          };
         }
         return { data: payload, status: res.status, ok: res.ok };
       };
 
-      let result: { data: any; status: number; ok: boolean };
+      let result: FetchOutcome;
       try {
         result = await doPost();
-      } catch (e1: any) {
+      } catch {
         // Retry once after a short delay on network error (e.g., HMR rebuilds)
         await new Promise((r) => setTimeout(r, 500));
         try {
           result = await doPost();
-        } catch (e2: any) {
-          throw e2; // surface to outer catch
+        } catch (secondError: unknown) {
+          throw secondError; // surface to outer catch
         }
       }
 
       const { data, status, ok } = result;
-      setMsgs((prev: Message[]) => {
-        const next = [...prev];
+      setMsgs((prev) => {
+        const next: Message[] = [...prev];
         const idx = next.findIndex((m) => m.role === "assistant" && !m.content && !m.error);
         if (idx >= 0) {
           // Build citations from either explicit citations or fallback to sources metadata
-          const cites = Array.isArray(data?.citations)
-            ? data.citations
-            : Array.isArray(data?.sources)
-            ? (data.sources as any[]).map((s) => {
-                const meta = s?.metadata || {};
-                const label = meta.title || meta.file_path || meta.source || "Source";
-                const page = meta.page || meta.page_number;
-                const l = page ? `${label}#page=${page}` : label;
-                const href = meta.url || meta.href || "#";
-                return { label: l, href };
-              })
-            : [];
+          const fallbackSources: Source[] = Array.isArray(data.sources) ? data.sources : [];
+          const derivedCitations: Citation[] = fallbackSources.map((source) => {
+            const metadata: SourceMetadata = source.metadata ?? {};
+            const labelCandidate = metadata.title ?? metadata.file_path ?? metadata.source;
+            const labelBase = typeof labelCandidate === "string" && labelCandidate.length > 0 ? labelCandidate : "Source";
+            const pageValue = metadata.page ?? metadata.page_number;
+            const labelWithPage =
+              typeof pageValue === "number" || (typeof pageValue === "string" && pageValue.length > 0)
+                ? `${labelBase}#page=${pageValue}`
+                : labelBase;
+            const hrefCandidate = metadata.url ?? metadata.href;
+            const href = typeof hrefCandidate === "string" && hrefCandidate.length > 0 ? hrefCandidate : "#";
+            return { label: labelWithPage, href };
+          });
+          const citations = Array.isArray(data.citations) && data.citations.length > 0 ? data.citations : derivedCitations;
           const base: Message = {
             role: "assistant",
-            content: data.answer || "",
+            content: typeof data.answer === "string" ? data.answer : "",
             time: timeNow(),
-            citations: cites,
-            followUps: data.followUps || [],
+            citations,
+            followUps: Array.isArray(data.followUps) ? data.followUps : [],
           };
-          if (Array.isArray(data.sources)) base.sources = data.sources;
-          const hasAnswer = !!(data.answer && data.answer.length > 0);
-          const errText = data.error ? String(data.error) : (!ok ? `HTTP ${status}` : "");
-          if (!hasAnswer && errText) { base.content = ""; base.error = errText; }
+          if (Array.isArray(data.sources)) {
+            base.sources = data.sources;
+          }
+          const hasAnswer = typeof data.answer === "string" && data.answer.length > 0;
+          const errText = data.error ? getErrorMessage(data.error) : !ok ? `HTTP ${status}` : "";
+          if (!hasAnswer && errText) {
+            base.content = "";
+            base.error = errText;
+          }
           next[idx] = base;
         }
         return next;
       });
-    } catch (err: any) {
-      setMsgs((prev: Message[]) => {
-        const next = [...prev];
+    } catch (err: unknown) {
+      const message = getErrorMessage(err);
+      setMsgs((prev) => {
+        const next: Message[] = [...prev];
         const idx = next.findIndex((m) => m.role === "assistant" && !m.content && !m.error);
-        if (idx >= 0) next[idx] = { role: "assistant", content: "", error: err?.message || "Request failed", time: timeNow() };
+        if (idx >= 0) {
+          next[idx] = { role: "assistant", content: "", error: message || "Request failed", time: timeNow() };
+        }
         return next;
       });
     } finally {
@@ -187,32 +253,6 @@ export default function ChatLayout() {
     // Submit immediately
     const form = document.getElementById("chat-form") as HTMLFormElement | null;
     if (form) form.requestSubmit();
-  }
-
-  function CitationList({ sources }: { sources?: Message["sources"] }) {
-    if (!sources || sources.length === 0) return null;
-    return (
-      <details className="mt-2">
-        <summary className="cursor-pointer select-none text-sm/6 text-neutral-300 hover:text-white">Citations</summary>
-        <ul className="mt-2 space-y-2 list-disc pl-6">
-          {sources.map((s, i) => {
-            const meta = s.metadata || {};
-            const parts: string[] = [];
-            for (const k of ["title", "file_path", "source", "page", "page_number"]) {
-              if (meta[k]) parts.push(`${k}: ${meta[k]}`);
-            }
-            return (
-              <li key={i}>
-                <div className="text-sm">{s.snippet || "(no snippet)"}</div>
-                {parts.length > 0 && (
-                  <div className="text-xs text-neutral-400">{parts.join("; ")}</div>
-                )}
-              </li>
-            );
-          })}
-        </ul>
-      </details>
-    );
   }
 
   return (
@@ -293,8 +333,8 @@ export default function ChatLayout() {
                   <div className="mt-2 text-xs text-neutral-500">{m.time}</div>
                   {!isUser && !hasError && (
                     <>
-                      <Citations items={m.citations as any} />
-                      <FollowUps items={m.followUps as any} onClick={submitFollowUp} />
+                      <Citations items={m.citations} />
+                      <FollowUps items={m.followUps} onClick={submitFollowUp} />
                     </>
                   )}
                 </div>
