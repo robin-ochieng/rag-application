@@ -75,44 +75,17 @@ A comprehensive course project for learning to develop intelligent AI agents usi
 
 ### Adding Dependencies
 
-```bash
-# Add a new dependency
-## Deploying the Gradio UI Online
-
-### Render (Blueprint)
-
-This repo includes a `render.yaml` that defines two web services: the FastAPI backend and a Gradio UI.
-
-1. Push your changes to GitHub.
-2. In Render, create a new Blueprint from this repository.
-3. Add missing environment variables as protected secrets for both services:
-    - `OPENAI_API_KEY`, `PINECONE_API_KEY2`, `INDEX_NAME2` (required)
-    - `PUBLIC_CLIENT_ORIGIN` and `BACKEND_API_KEY` (backend optional)
-4. Deploy. Render will build two services:
-    - `insurance-act-rag-api` (FastAPI)
-    - `insurance-act-gradio` (Gradio, served on port `7860`)
-
-The Gradio service will get a public URL like `https://insurance-act-gradio.onrender.com` that you can share.
-
-### Google Cloud Run (alternative)
-
 ```powershell
+# Add a new dependency (example)
 uv add package-name
 
-# Add development dependency
+# Add a development dependency
 uv add --dev package-name
 ```
 
 ### Running Tests
 
-
-### Hugging Face Spaces (alternative)
-
-1. Create a new Space (Gradio) and point it to this repo or upload `gradio_app.py` and `requirements.txt`.
-2. Set Space Secrets: `OPENAI_API_KEY`, `PINECONE_API_KEY2`, `INDEX_NAME2`.
-3. The Space URL is public by default and can be shared with colleagues.
-
-```bash
+```powershell
 # Run tests (when test suite is added)
 uv run pytest
 ```
@@ -229,11 +202,119 @@ This repo includes a GitHub Actions workflow that builds and publishes the image
 Instead of auto-building from the repo, you can point Render at the GHCR image:
 
 1. Create a Web Service on Render and choose “Docker” as environment.
-2. For Image, set:
-   `ghcr.io/<OWNER>/<REPO>/insurance-act-rag-api:latest`
+2. For Image, set: `ghcr.io/<OWNER>/<REPO>/insurance-act-rag-api:latest`
 3. Add environment variables as documented above.
 4. Under “Deploy Script”, leave default because the image already starts via `CMD`.
 5. Authentication: If your GHCR is private, provide a deploy key or a registry auth token; public images need no auth.
 
-Alternatively, you can let Render auto-build from this repo (as previously described) and ignore GHCR.
+Alternatively, you can let Render auto-build from this repo and ignore GHCR.
 ```
+
+## 📥 Ingestion (Add Documents)
+
+- Put source files under `data/documents/` (subfolders OK). Supported: `.pdf`, `.txt`, `.md`.
+- The pipeline splits, deduplicates by content hash, and upserts to Pinecone with deterministic IDs.
+  
+
+PowerShell quick start:
+
+```powershell
+# Ensure your virtualenv is active and .env has keys
+# Required: OPENAI_API_KEY, PINECONE_API_KEY2, INDEX_NAME2
+uv run python -m ingestion.cli
+```
+
+Target specific files or folders:
+
+```powershell
+uv run python -m ingestion.cli --pattern "data/documents/**/*.pdf" --pattern "data/documents/**/*.md"
+```
+
+Notes:
+- Uses OpenAI `text-embedding-3-large` to match the RAG setup.
+- Aborts if Pinecone index dimension does not match the embedding size.
+- Metadata includes `source` (relative path), `page`, and chunk `sha1` for traceability.
+
+## Ingestion & Namespace Audit Guide
+
+This project supports multiple Pinecone namespaces (e.g. `insurance-act`, `ifrs-17`). Below is the robust workflow for adding new document sets and verifying they are fully ingested.
+
+### 1. Install / Update Dependencies
+
+`cryptography` is required for some PDFs (object streams / encryption). Ensure your virtualenv is active and run:
+
+```powershell
+pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+### 2. Ingest a Namespace
+
+```powershell
+python -m ingestion.cli --namespace ifrs-17 --pattern "data/ifrs-17/*.pdf"
+```
+
+Output example:
+```
+Created 812 chunks; upserted 790 unique chunks to Pinecone (namespace='ifrs-17').
+Wrote manifest to data/_manifests/ifrs-17.json
+```
+
+If you see a failure referencing `cryptography`, ensure it is installed and retry.
+
+### 3. Manifest
+
+Each ingestion run writes `data/_manifests/<namespace>.json` containing per-file chunk counts and a timestamp. Commit this if you want traceability.
+
+### 4. Quick Retrieval Sanity Check
+
+Use `quick_check.py` to see which files surface for one or more queries:
+
+```powershell
+python quick_check.py --queries "IFRS 17 simplified approach,CSM calculation" --k 40
+```
+
+Absence of some files here does not necessarily mean they weren’t ingested (it’s relevance ranked).
+
+### 5. Namespace Audit Script
+
+For a deeper check (sampling-based) run:
+
+```powershell
+python scripts/audit_namespace.py --namespace ifrs-17 --expect-pattern "data/ifrs-17/*.pdf" --top-k 40
+```
+
+It compares:
+- Manifest file list
+- Sampled retrieval metadata (multiple broad probe queries)
+- Files on disk matching the pattern
+
+If any expected file is entirely absent from both the manifest and sampled retrieval results, the script exits non-zero.
+
+### 6. Environment Variables for Multi-Namespace Retrieval
+
+Set `INDEX_NAMESPACES` to a comma-separated list to allow queries across multiple namespaces:
+
+```powershell
+$env:INDEX_NAMESPACES = "insurance-act,ifrs-17"
+```
+
+The retrieval code splits the requested `k_total` across namespaces and merges results with simple de-duplication.
+
+### 7. Re-Ingestion / Updates
+
+If you replace PDFs, re-run the ingestion command. Chunks are keyed by content hash so unchanged text won’t duplicate.
+
+### 8. Troubleshooting
+
+| Symptom | Likely Cause | Fix |
+|---------|--------------|-----|
+| `pypdf.errors.DependencyError: cryptography>=3.1 is required` | Missing cryptography | Install dependency and retry |
+| Zero matches from a namespace | Wrong namespace or no docs ingested | Verify manifest existence and ingestion output |
+| Duplicated file names in retrieval | Multiple ranked chunks from same file | Normal behavior |
+| File missing from quick check but present in manifest | Query not relevant enough | Increase `--k` or broaden queries |
+
+### 9. CI / Future Automation
+
+You can wire `scripts/audit_namespace.py` into CI to block merges if ingestion drifts from expected source files.
+

@@ -109,7 +109,7 @@ Components:
 - `src/components/NavBar.tsx`: sticky translucent navbar with logo/title and links
 - `src/components/ChatLayout.tsx`: input (sticky on mobile), messages scroll area, citations per answer
 - `src/components/Footer.tsx`: glass footer with "Developed by kenbright.ai" and minimal nav
-- `src/components/ThemeToggle.tsx`: toggles `dark` class on `<html>`
+- `src/components/ThemeSwitcher.tsx`: accessible dropdown for Light/Dark/System
 
 Page wiring:
 - `src/app/layout.tsx` composes the full-page gradient background + `<NavBar/>` `<main/>` `<Footer/>`
@@ -124,6 +124,18 @@ Backend proxy (optional):
 - Configure `.env.local` in `web/`:
 	- `BACKEND_URL=http://localhost:8080`
 	- `BACKEND_API_KEY=...` (if enabled on FastAPI)
+
+## Theming
+
+- Stack: `next-themes` + Tailwind class strategy.
+- Provider: `src/app/providers.tsx` wraps the app with `<ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange />`.
+- No‑FOUC: `src/app/layout.tsx` injects a small inline script in `<head>` to apply the correct `dark` class from `localStorage.theme` or `prefers-color-scheme` before hydration. `<html suppressHydrationWarning>` is also set.
+- CSS tokens: `src/app/globals.css` defines light defaults on `:root` and `.dark { ... }` overrides. Tailwind uses `dark:` variants.
+- Switcher: `src/components/ThemeSwitcher.tsx` renders a compact button ("Light/Dark/System ▾") with an accessible menu containing a "System" label and two options: "Dark" and "Light". The selected option shows a ✓ and the choice persists.
+
+Usage:
+- Use Tailwind `dark:` variants (e.g., `bg-white dark:bg-neutral-900`).
+- The switcher is wired in `src/components/NavBar.tsx`.
 
 ## Learn More
 

@@ -1,1 +1,66 @@
-powershell -NoProfile -Command "Get-Process -Name node -ErrorAction SilentlyContinue | Stop-Process -Force; cd 'C:\Users\Robin Ochieng\OneDrive - Kenbright\Gig\AI Agents\Projects\RAG Application\web'; npm run dev -- -H 127.0.0.1 -p 3001"
+<#
+  PowerShell dev launcher: start FastAPI + Next.js with consistent API_URL
+  - Sets API_URL for the Next proxy
+  - Starts uvicorn on 127.0.0.1:8000 with --reload
+  - Waits for /healthz to return 200
+  - Starts Next on 127.0.0.1:3001
+  - Cleans up uvicorn on exit
+#>
+
+$ErrorActionPreference = "Stop"
+
+# Determine repo root from this script's location
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+if (-not $scriptDir) { $scriptDir = (Get-Location).Path }
+$root = $scriptDir
+$web  = Join-Path $root "web"
+
+$host = "127.0.0.1"
+$apiPort = 8000
+$webPort = 3001
+$apiBase = "http://$host:$apiPort"
+
+# Ensure Next proxy uses the same backend base.
+$env:API_URL = $apiBase
+Write-Host "Using API_URL=$($env:API_URL)" -ForegroundColor Cyan
+
+# Activate venv if available.
+$venvAct = Join-Path $root ".venv\Scripts\Activate.ps1"
+if (Test-Path $venvAct) { . $venvAct }
+
+# Start FastAPI (uvicorn) in background.
+Write-Host "Starting FastAPI (uvicorn) on $apiBase ..." -ForegroundColor Cyan
+$backend = Start-Process -FilePath "python" `
+  -ArgumentList @("-m","uvicorn","app_fastapi:app","--host",$host,"--port",$apiPort,"--reload") `
+  -WorkingDirectory $root -PassThru -WindowStyle Hidden
+
+try {
+  # Wait for /healthz (max ~20s)
+  $healthUrl = "$apiBase/healthz"
+  $healthy = $false
+  for ($i=0; $i -lt 40; $i++) {
+    try {
+      $r = Invoke-WebRequest -Uri $healthUrl -UseBasicParsing -TimeoutSec 2
+      if ($r.StatusCode -eq 200) { $healthy = $true; break }
+    } catch {
+      Start-Sleep -Milliseconds 500
+    }
+  }
+  if ($healthy) {
+    Write-Host "FastAPI healthy at $healthUrl" -ForegroundColor Green
+  } else {
+    Write-Warning "Backend not healthy at $healthUrl; Next will start anyway."
+  }
+
+  # Start Next.js on 127.0.0.1:3001
+  Set-Location $web
+  Write-Host "Starting Next dev server on http://$host:$webPort ..." -ForegroundColor Cyan
+  npm run dev -- -H $host -p $webPort
+}
+finally {
+  # Cleanup backend when Next exits or on error.
+  if ($backend -and -not $backend.HasExited) {
+    Write-Host "Stopping FastAPI (PID $($backend.Id))" -ForegroundColor Yellow
+    Stop-Process -Id $backend.Id -Force -ErrorAction SilentlyContinue
+  }
+}

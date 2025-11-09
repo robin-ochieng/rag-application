@@ -1,0 +1,103 @@
+name: Deploy to Cloud Run
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  REGION: ${{ secrets.GCP_REGION }}
+  ARTIFACT_REPO: app-images
+  BACKEND_SERVICE: rag-backend
+  FRONTEND_SERVICE: rag-frontend
+  CLOUD_RUN_FRONTEND_URL: ${{ secrets.CLOUD_RUN_FRONTEND_URL }}
+  ADDITIONAL_CORS_ORIGINS: ${{ secrets.ADDITIONAL_CORS_ORIGINS }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          token_format: access_token
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }}
+          # If you prefer a JSON key, replace the inputs above with:
+          # credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+
+      - name: Configure Artifact Registry authentication
+        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+      - name: Build and push backend image
+        run: |
+          set -euo pipefail
+          BACKEND_IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${ARTIFACT_REPO}/rag-backend:${GITHUB_SHA}"
+          echo "BACKEND_IMAGE=${BACKEND_IMAGE}" >> "$GITHUB_ENV"
+          gcloud builds submit \
+            --project "${PROJECT_ID}" \
+            --region "${REGION}" \
+            --tag "${BACKEND_IMAGE}" \
+            --file Dockerfile.backend .
+
+      - name: Deploy backend service
+        run: |
+          set -euo pipefail
+          gcloud run deploy "${BACKEND_SERVICE}" \
+            --project "${PROJECT_ID}" \
+            --region "${REGION}" \
+            --image "${BACKEND_IMAGE}" \
+            --allow-unauthenticated \
+            --port 8080 \
+            --set-secrets OPENAI_API_KEY=OPENAI_API_KEY:latest \
+            --update-env-vars PUBLIC_CLIENT_ORIGIN=http://localhost:3000
+          BACKEND_URL=$(gcloud run services describe "${BACKEND_SERVICE}" \
+            --project "${PROJECT_ID}" \
+            --region "${REGION}" \
+            --format 'value(status.url)')
+          echo "BACKEND_URL=${BACKEND_URL}" >> "$GITHUB_ENV"
+
+      - name: Build and push frontend image
+        run: |
+          set -euo pipefail
+          FRONTEND_IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${ARTIFACT_REPO}/rag-frontend:${GITHUB_SHA}"
+          echo "FRONTEND_IMAGE=${FRONTEND_IMAGE}" >> "$GITHUB_ENV"
+          gcloud builds submit \
+            --project "${PROJECT_ID}" \
+            --region "${REGION}" \
+            --tag "${FRONTEND_IMAGE}" \
+            --file web/Dockerfile.frontend web
+
+      - name: Deploy frontend service
+        run: |
+          set -euo pipefail
+          gcloud run deploy "${FRONTEND_SERVICE}" \
+            --project "${PROJECT_ID}" \
+            --region "${REGION}" \
+            --image "${FRONTEND_IMAGE}" \
+            --allow-unauthenticated \
+            --port 8080 \
+            --update-env-vars NEXT_PUBLIC_API_BASE="${BACKEND_URL}"
+
+      - name: Output service URLs
+        run: |
+          set -euo pipefail
+          echo "Backend URL: ${BACKEND_URL}"
+          FRONTEND_URL=$(gcloud run services describe "${FRONTEND_SERVICE}" \
+            --project "${PROJECT_ID}" \
+            --region "${REGION}" \
+            --format 'value(status.url)')
+          echo "Frontend URL: ${FRONTEND_URL}"

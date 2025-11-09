@@ -1,58 +1,47 @@
 "use client";
-import { useEffect, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent } from "react";
-import { Citations, FollowUps, IconCluster, MessageCard, Skeleton } from "./chat/Card";
 
-// Minimal message shape
-type SourceMetadataValue = string | number | boolean | null | undefined;
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type CSSProperties,
+  type FormEvent,
+  type KeyboardEvent,
+} from "react";
+import { useStreamAnswer } from "@/components/chat/useStreamAnswer";
+import { FollowUps, IconCluster, MessageCard, Skeleton } from "./chat/Card";
+import CitationsDisclosure from "@/components/chat/CitationsDisclosure";
+import Composer from "@/components/chat/Composer";
+import MarkdownResponse from "@/components/chat/MarkdownResponse";
+import { normalizeCitations, sourcesToCitations, formatCitationMeta } from "@/lib/citations";
+import type { ChatMessage, Citation, Source } from "@/types/citations";
 
-interface SourceMetadata {
-  title?: string;
-  file_path?: string;
-  source?: string;
-  page?: string | number;
-  page_number?: string | number;
-  url?: string;
-  href?: string;
-  [key: string]: SourceMetadataValue;
-}
+type Message = ChatMessage;
 
-type Source = {
-  snippet?: string;
-  metadata?: SourceMetadata;
-};
-
-type Citation = { id?: string; label?: string; href?: string };
-
-type ChatApiResponse = {
+interface ChatApiResponse {
   answer?: string;
   sources?: Source[];
   citations?: Citation[];
   followUps?: string[];
   error?: unknown;
-  backend?: string;
-  ok?: boolean;
-};
+}
 
-type Message = {
-  role: "user" | "assistant";
-  content: string;
-  time: string;
-  sources?: Source[];
-  citations?: Citation[];
-  followUps?: string[];
-  error?: string;
-};
+const API_PATH = "/api/chat";
+const bubbleStyle: CSSProperties = { "--bubble-actions-width": "3.25rem" } as CSSProperties;
 
-type FetchOutcome = {
-  data: ChatApiResponse;
-  status: number;
-  ok: boolean;
-};
+type LibraryCitation = Parameters<typeof normalizeCitations>[0][number];
 
-type HealthStatus = {
-  ok?: boolean;
-  backend?: string;
-};
+function toLibraryCitation(citation: Citation): LibraryCitation {
+  return {
+    ...citation,
+    sourceType: citation.sourceType ?? "InternalDoc",
+  };
+}
+
+function toAppCitations(items: LibraryCitation[]): Citation[] {
+  return items.map((item) => ({ ...item }));
+}
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) {
@@ -64,237 +53,183 @@ function getErrorMessage(error: unknown): string {
   return "Unknown error";
 }
 
+function resolveCitations(data: ChatApiResponse): Citation[] {
+  const payloadCitations: LibraryCitation[] = Array.isArray(data.citations)
+    ? data.citations.map(toLibraryCitation)
+    : [];
+
+  const sourceCitations: LibraryCitation[] = Array.isArray(data.sources)
+    ? sourcesToCitations(data.sources)
+    : [];
+
+  const normalized = normalizeCitations([...payloadCitations, ...sourceCitations]);
+  return toAppCitations(normalized);
+}
+
+function toDisclosureItems(citations: Citation[]): { label: string; href: string }[] {
+  return citations.map((citation) => {
+    const meta = formatCitationMeta(toLibraryCitation(citation));
+    const label = meta ? `${citation.title} (${meta})` : citation.title;
+    return {
+      label,
+      href: citation.url || "#",
+    };
+  });
+}
+
 export default function ChatLayout() {
   const [q, setQ] = useState("");
   const [msgs, setMsgs] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const streamMetaRef = useRef<{ sources: Source[]; citations: Citation[] }>({ sources: [], citations: [] });
 
-  // Always use Next.js API proxy to avoid browser CORS/host issues
-  const apiPath = "/api/chat";
+  const applyToLastAssistant = (updater: (message: Message) => Message) => {
+    setMsgs((prev) => {
+      const next = [...prev];
+      for (let i = next.length - 1; i >= 0; i--) {
+        if (next[i].role === "assistant") {
+          next[i] = updater(next[i]);
+          break;
+        }
+      }
+      return next;
+    });
+  };
 
-  // Auto-scroll
+  const { start: startStream, streaming } = useStreamAnswer({
+    onMeta: (sources, citations) => {
+      const normalized = citations && citations.length > 0
+        ? normalizeCitations(citations.map(toLibraryCitation))
+        : normalizeCitations(sourcesToCitations(sources));
+      const appCitations = toAppCitations(normalized);
+      streamMetaRef.current = { sources, citations: appCitations };
+      applyToLastAssistant((msg) => ({ ...msg, sources, citations: appCitations }));
+    },
+    onToken: (token) => {
+      applyToLastAssistant((msg) => ({
+        ...msg,
+        content: `${msg.content}${token}`,
+        sources: streamMetaRef.current.sources,
+        citations: streamMetaRef.current.citations,
+      }));
+    },
+    onDone: (full) => {
+      applyToLastAssistant((msg) => ({
+        ...msg,
+        content: full,
+        sources: streamMetaRef.current.sources,
+        citations: streamMetaRef.current.citations,
+      }));
+    },
+    onError: (message) => {
+      applyToLastAssistant((msg) => ({ ...msg, error: message || "Stream error" }));
+    },
+  });
+
   useEffect(() => {
     const el = scrollRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    if (el) {
+      el.scrollTop = el.scrollHeight;
+    }
   }, [msgs, loading]);
 
-  function timeNow() {
+  function timeNow(): string {
     const d = new Date();
     return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   }
 
-  // Tiny status pill that pings the proxy health (GET /api/chat)
-  function StatusPill() {
-    const [state, setState] = useState<"checking" | "ok" | "warn">("checking");
-    const [backend, setBackend] = useState<string | undefined>(undefined);
-    const [last, setLast] = useState<string>("");
+  const enqueueAssistantPlaceholder = (userMessage: Message) => {
+    const assistantMsg: Message = { role: "assistant", content: "", time: timeNow() };
+    setMsgs((prev) => [...prev, userMessage, assistantMsg]);
+  };
 
-    let inFlight = false;
-    const ping = async () => {
-      if (inFlight) return; // prevent overlapping polls
-      inFlight = true;
-      setState("checking");
-      try {
-        const res = await fetch("/api/chat", { cache: "no-store" });
-        const data = (await res.json().catch(() => ({}))) as HealthStatus;
-        if (res.ok && (data.ok ?? true)) {
-          setState("ok");
-        } else {
-          setState("warn");
-        }
-        setBackend(typeof data.backend === "string" ? data.backend : undefined);
-      } catch {
-        setState("warn");
-      } finally {
-        setLast(timeNow());
-        inFlight = false;
-      }
-    };
-
-    useEffect(() => {
-      ping();
-      const id = setInterval(ping, 15000);
-      return () => clearInterval(id);
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
-
-    const dot = state === "ok" ? "bg-emerald-300" : state === "checking" ? "bg-amber-300" : "bg-amber-400";
-    const bg = state === "ok" ? "bg-emerald-500/80 text-white" : "bg-amber-500/80 text-black";
-    const label = state === "ok" ? "API: OK" : state === "checking" ? "API: Checking…" : "API: Unreachable";
-
-    return (
-      <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-medium border border-white/20 ${bg}`}>
-        <span className={`h-2 w-2 rounded-full ${dot}`} />
-        {label}
-        {backend ? <span className="opacity-70"> · {backend}</span> : null}
-        {last ? <span className="opacity-70"> · {last}</span> : null}
-      </span>
-    );
-  }
-
-  async function onSubmit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    if (!q.trim()) return;
-
-    const userMsg: Message = { role: "user", content: q, time: timeNow() };
-    setMsgs((m: Message[]) => [
-      ...m,
-      userMsg,
-      { role: "assistant", content: "", time: timeNow(), error: undefined },
-    ]);
-    setQ("");
+  const handleFallbackRequest = async (prompt: string) => {
     setLoading(true);
-
     try {
-      // Helper: perform POST with a single retry for transient "fetch failed" cases
-      const doPost = async (): Promise<FetchOutcome> => {
-        const res = await fetch(apiPath, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ q: userMsg.content }),
-          cache: "no-store",
-        });
-        let payload: ChatApiResponse = {};
-        try {
-          payload = (await res.json()) as ChatApiResponse;
-        } catch (jsonError: unknown) {
-          const txt = await res.text().catch(() => "");
-          payload = {
-            answer: "",
-            sources: [],
-            error: txt || getErrorMessage(jsonError) || `Invalid JSON (status ${res.status})`,
-          };
-        }
-        return { data: payload, status: res.status, ok: res.ok };
-      };
+      const res = await fetch(API_PATH, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ q: prompt }),
+        cache: "no-store",
+      });
 
-      let result: FetchOutcome;
+      let payload: ChatApiResponse = {};
       try {
-        result = await doPost();
-      } catch {
-        // Retry once after a short delay on network error (e.g., HMR rebuilds)
-        await new Promise((r) => setTimeout(r, 500));
-        try {
-          result = await doPost();
-        } catch (secondError: unknown) {
-          throw secondError; // surface to outer catch
-        }
+        payload = (await res.json()) as ChatApiResponse;
+      } catch (jsonError) {
+        const text = await res.text().catch(() => "");
+        payload = { answer: "", sources: [], error: text || getErrorMessage(jsonError) || `Invalid JSON (status ${res.status})` };
       }
 
-      const { data, status, ok } = result;
-      setMsgs((prev) => {
-        const next: Message[] = [...prev];
-        const idx = next.findIndex((m) => m.role === "assistant" && !m.content && !m.error);
-        if (idx >= 0) {
-          // Build citations from either explicit citations or fallback to sources metadata
-          const fallbackSources: Source[] = Array.isArray(data.sources) ? data.sources : [];
-          const derivedCitations: Citation[] = fallbackSources.map((source) => {
-            const metadata: SourceMetadata = source.metadata ?? {};
-            const labelCandidate = metadata.title ?? metadata.file_path ?? metadata.source;
-            const labelBase = typeof labelCandidate === "string" && labelCandidate.length > 0 ? labelCandidate : "Source";
-            const pageValue = metadata.page ?? metadata.page_number;
-            const labelWithPage =
-              typeof pageValue === "number" || (typeof pageValue === "string" && pageValue.length > 0)
-                ? `${labelBase}#page=${pageValue}`
-                : labelBase;
-            const hrefCandidate = metadata.url ?? metadata.href;
-            const href = typeof hrefCandidate === "string" && hrefCandidate.length > 0 ? hrefCandidate : "#";
-            return { label: labelWithPage, href };
-          });
-          const citations = Array.isArray(data.citations) && data.citations.length > 0 ? data.citations : derivedCitations;
-          const base: Message = {
-            role: "assistant",
-            content: typeof data.answer === "string" ? data.answer : "",
-            time: timeNow(),
-            citations,
-            followUps: Array.isArray(data.followUps) ? data.followUps : [],
-          };
-          if (Array.isArray(data.sources)) {
-            base.sources = data.sources;
-          }
-          const hasAnswer = typeof data.answer === "string" && data.answer.length > 0;
-          const errText = data.error ? getErrorMessage(data.error) : !ok ? `HTTP ${status}` : "";
-          if (!hasAnswer && errText) {
-            base.content = "";
-            base.error = errText;
-          }
-          next[idx] = base;
-        }
-        return next;
-      });
-    } catch (err: unknown) {
-      const message = getErrorMessage(err);
-      setMsgs((prev) => {
-        const next: Message[] = [...prev];
-        const idx = next.findIndex((m) => m.role === "assistant" && !m.content && !m.error);
-        if (idx >= 0) {
-          next[idx] = { role: "assistant", content: "", error: message || "Request failed", time: timeNow() };
-        }
-        return next;
-      });
+      const citations = resolveCitations(payload);
+      const followUps = Array.isArray(payload.followUps) ? payload.followUps : [];
+      const sources = Array.isArray(payload.sources) ? payload.sources : undefined;
+      const answer = typeof payload.answer === "string" ? payload.answer : "";
+      const errText = payload.error ? getErrorMessage(payload.error) : !res.ok ? `HTTP ${res.status}` : "";
+
+      applyToLastAssistant((msg) => ({
+        ...msg,
+        content: answer,
+        error: answer ? undefined : errText || "Request failed",
+        sources,
+        citations,
+        followUps,
+      }));
+    } catch (error) {
+      const message = getErrorMessage(error);
+      applyToLastAssistant((msg) => ({ ...msg, content: "", error: message }));
     } finally {
       setLoading(false);
     }
+  };
+
+  async function onSubmit(e?: FormEvent<HTMLFormElement>) {
+    if (e) e.preventDefault();
+    if (loading || streaming) return;
+    if (!q.trim()) return;
+
+    const userMsg: Message = { role: "user", content: q, time: timeNow() };
+    setQ("");
+    streamMetaRef.current = { sources: [], citations: [] };
+    enqueueAssistantPlaceholder(userMsg);
+
+    startStream(userMsg.content).catch((error) => {
+      console.warn("Streaming failed, falling back", error);
+      handleFallbackRequest(userMsg.content);
+    });
   }
 
-  function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      const form = (e.currentTarget as HTMLTextAreaElement).closest("form");
-      if (form) (form as HTMLFormElement).requestSubmit();
-    } else if (e.key === "Escape") {
-      (e.currentTarget as HTMLTextAreaElement).blur();
+  function onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      onSubmit();
+    } else if (event.key === "Escape") {
+      event.currentTarget.blur();
     }
   }
 
-  function submitFollowUp(qText: string) {
-    setQ(qText);
-    // Submit immediately
+  function submitFollowUp(text: string) {
+    setQ(text);
     const form = document.getElementById("chat-form") as HTMLFormElement | null;
-    if (form) form.requestSubmit();
+    form?.requestSubmit();
   }
 
   return (
-  <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 py-6 flex flex-col gap-6">
-      {/* Live API status */}
-      <div className="sticky top-16 z-20 flex items-center justify-end">
-        <StatusPill />
-      </div>
-      {/* Input block */}
-      <form
-        id="chat-form"
-        onSubmit={onSubmit}
-        className="sticky top-20 z-10 bg-white/80 dark:bg-neutral-900/70 backdrop-blur rounded-[var(--radius-card)] border border-black/5 dark:border-white/10 shadow-[var(--shadow-card)] p-4"
-      >
-        <label htmlFor="q" className="block text-sm font-medium text-neutral-800 dark:text-neutral-200/90 mb-2">
-          Ask a question
-        </label>
-        <textarea
-          id="q"
-          value={q}
-          onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setQ(e.target.value)}
-          onKeyDown={onKeyDown}
-          placeholder="Ask about the Insurance Act…"
-          className="w-full rounded-xl border border-black/5 dark:border-white/10 bg-white/70 dark:bg-neutral-900/60 p-4 text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-500 dark:placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-violet-500/60 focus:border-transparent min-h-[120px]"
-        />
-        <div className="mt-3 flex items-center gap-3">
-          <button
-            type="submit"
-            disabled={loading}
-            aria-label="Ask question"
-            className="inline-flex items-center justify-center rounded-xl px-4 py-2 font-medium text-white bg-gradient-to-r from-violet-600 to-cyan-500 shadow hover:shadow-lg transition disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-violet-500/60"
-          >
-            {loading ? "Asking…" : "Ask Question"}
-          </button>
+    <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 py-4 min-h-[calc(100vh-8rem)] grid grid-rows-[auto,1fr,auto] gap-4">
+      <div className="flex items-center justify-between">
+        <h1 className="text-base font-semibold text-[rgb(var(--foreground))]">Chat</h1>
+        <div className="flex items-center gap-2">
           <button
             type="button"
             aria-label="Start new chat"
             onClick={() => {
-              if (msgs.length > 0 && !confirm("Start a new chat? Current messages will be cleared.")) return;
+              if (msgs.length > 0 && !confirm("Start a new chat? Current messages will be cleared.")) {
+                return;
+              }
               setMsgs([]);
             }}
-            className="inline-flex items-center justify-center rounded-xl px-3 py-2 text-sm bg-white/20 hover:bg-white/30 dark:bg-black/20 dark:hover:bg-black/30 border border-white/20 focus:outline-none focus:ring-2 focus:ring-violet-500/60"
+            className="h-9 rounded-md border border-[rgb(var(--border))] px-3 text-sm bg-[rgb(var(--accent))] text-[rgb(var(--accent-foreground))] hover:opacity-95 focus:outline-none focus:ring-2 focus:ring-[rgb(var(--ring))]"
           >
             New chat
           </button>
@@ -302,39 +237,93 @@ export default function ChatLayout() {
             type="button"
             aria-label="Clear chat"
             onClick={() => {
-              if (msgs.length > 0 && !confirm("Clear all messages?")) return;
+              if (msgs.length > 0 && !confirm("Clear all messages?")) {
+                return;
+              }
               setMsgs([]);
             }}
-            className="inline-flex items-center justify-center rounded-xl px-3 py-2 text-sm bg-white/20 hover:bg-white/30 dark:bg-black/20 dark:hover:bg-black/30 border border-white/20 focus:outline-none focus:ring-2 focus:ring-violet-500/60"
+            className="h-9 rounded-md border border-[rgb(var(--border))] px-3 text-sm bg-[rgb(var(--accent))] text-[rgb(var(--accent-foreground))] hover:opacity-95 focus:outline-none focus:ring-2 focus:ring-[rgb(var(--ring))]"
           >
             Clear chat
           </button>
         </div>
-      </form>
+      </div>
 
-      {/* Messages */}
-      <div ref={scrollRef} className="h-[calc(100vh-14rem)] overflow-y-auto px-1">
-        <div className="flex flex-col gap-4">
+      <div ref={scrollRef} className="overflow-y-auto px-1">
+        <div className="flex flex-col gap-4 pb-4">
           {msgs.length === 0 && (
-            <div className="text-neutral-300">No messages yet. Ask something to get started.</div>
+            <div className="flex flex-col items-center justify-center py-20 text-center relative">
+              <h2 className="text-xl font-semibold tracking-tight mb-4 bg-gradient-to-r from-indigo-500 via-sky-500 to-teal-500 bg-clip-text text-transparent">
+                Welcome to Kenbright GPT
+              </h2>
+              <p className="max-w-lg text-sm sm:text-base leading-relaxed text-[rgb(var(--muted-foreground))] mb-7">
+                Ask anything and I will search across curated Insurance Act and IFRS-17 resources to give concise, cited answers. Try asking about regulatory definitions, compliance obligations, contract measurement, or specific clauses.
+              </p>
+              <div className="flex flex-wrap items-center justify-center gap-2 mb-10">
+                {[
+                  "How do I optimize IFRS-17 CSM calculations for profitability?",
+                  "What are the latest regulatory capital adequacy requirements?",
+                  "Guide me through risk adjustment methodologies under IFRS-17",
+                  "How to implement loss component recognition for complex contracts?",
+                ].map((example) => (
+                  <button
+                    key={example}
+                    onClick={() => submitFollowUp(example)}
+                    className="group relative rounded-full border border-[rgb(var(--border))] px-4 py-1.5 text-xs sm:text-sm font-medium text-[rgb(var(--foreground))]/80 hover:text-[rgb(var(--foreground))] transition bg-[rgb(var(--background))]/60 hover:bg-[rgb(var(--accent))]/40"
+                  >
+                    {example}
+                  </button>
+                ))}
+              </div>
+              <div className="text-xs text-[rgb(var(--muted-foreground))] flex items-center gap-1">
+                Developed by <span className="font-medium text-[rgb(var(--foreground))]">Kenbright AI</span>
+              </div>
+            </div>
           )}
-          {msgs.map((m, i) => {
-            const isUser = m.role === "user";
-            const hasError = !!m.error;
+          {msgs.map((message, index) => {
+            const isUser = message.role === "user";
+            const hasError = Boolean(message.error);
+            const disclosureItems = message.citations ? toDisclosureItems(message.citations) : [];
+
             return (
-              <MessageCard key={i} side={isUser ? "right" : "left"}>
-                <div className="relative">
+              <MessageCard key={`${message.role}-${index}-${message.time}`} side={isUser ? "right" : "left"}>
+                <div className="relative pr-[var(--bubble-actions-width)]" style={bubbleStyle}>
                   {!isUser && !hasError && (
-                    <IconCluster onCopy={() => navigator.clipboard.writeText(m.content)} />
+                    <IconCluster onCopy={() => navigator.clipboard.writeText(message.content)} />
                   )}
-                  <div className="whitespace-pre-wrap chat-content">
-                    {m.content || (hasError ? `Error: ${m.error}` : <Skeleton />)}
+                  <div className="chat-content relative">
+                    {message.content ? (
+                      isUser ? (
+                        <div className="whitespace-pre-wrap text-[rgb(var(--foreground))]">{message.content}</div>
+                      ) : (
+                        <MarkdownResponse content={message.content} />
+                      )
+                    ) : hasError ? (
+                      `Error: ${message.error}`
+                    ) : (
+                      <>
+                        {streaming && index === msgs.length - 1 && message.role === "assistant" ? (
+                          <div className="flex items-center gap-3 py-2">
+                            <div className="relative h-5 w-5">
+                              <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-indigo-500 via-sky-500 to-teal-500 animate-pulse opacity-30" />
+                              <div className="absolute inset-0 rounded-full border border-indigo-400/40 animate-[spin_2s_linear_infinite]" />
+                              <div className="absolute inset-1 rounded-full bg-[rgb(var(--background))]" />
+                            </div>
+                            <div className="text-sm text-[rgb(var(--muted-foreground))] animate-pulse [animation-delay:150ms]">
+                              Thinking…
+                            </div>
+                          </div>
+                        ) : (
+                          <Skeleton />
+                        )}
+                      </>
+                    )}
                   </div>
-                  <div className="mt-2 text-xs text-neutral-500">{m.time}</div>
+                  <div className="mt-2 text-xs text-[rgb(var(--muted-foreground))]">{message.time}</div>
                   {!isUser && !hasError && (
                     <>
-                      <Citations items={m.citations} />
-                      <FollowUps items={m.followUps} onClick={submitFollowUp} />
+                      {disclosureItems.length > 0 && <CitationsDisclosure items={disclosureItems} />}
+                      <FollowUps items={message.followUps ?? []} onClick={submitFollowUp} />
                     </>
                   )}
                 </div>
@@ -343,6 +332,16 @@ export default function ChatLayout() {
           })}
         </div>
       </div>
+
+      <Composer
+        id="chat-form"
+        value={q}
+        onChange={(event: ChangeEvent<HTMLTextAreaElement>) => setQ(event.target.value)}
+        onKeyDown={onKeyDown}
+        onSubmit={onSubmit}
+        disabled={loading || streaming}
+        placeholder="Ask about Insurance Act, IFRS-17, or compliance topics…"
+      />
     </div>
   );
 }

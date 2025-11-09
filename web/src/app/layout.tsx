@@ -1,15 +1,19 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import "highlight.js/styles/github-dark.css";
 import NavBar from "@/components/NavBar";
-import Footer from "@/components/Footer";
+import Providers from "./providers";
+import { AuthProvider } from "@/contexts/AuthContext";
+import AuthDebug from "@/components/AuthDebug";
+import DatabaseStatus from "@/components/DatabaseStatus";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Insurance Act Chatbot",
-  description: "Insurance Act Chatbot — RAG over Insurance Act documents",
+  title: "Kenbright GPT",
+  description: "AI Assistant for Insurance Act and IFRS-17 — RAG over regulatory documents",
 };
 
 export default function RootLayout({
@@ -17,14 +21,35 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen flex flex-col bg-gradient-to-br from-[#0b1220] via-[#0f172a] to-[#111827] text-neutral-100 dark:text-neutral-200`}
-      >
-        <NavBar />
-        <main className="flex-1">
-          {children}
-        </main>
-        <Footer />
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              !function(){
+                try{
+                  var e=document.documentElement;
+                  var t=localStorage.getItem('kenbright-theme');
+                  if(t && t !== 'system'){
+                    e.classList.toggle('dark', t === 'dark');
+                  } else {
+                    var m=window.matchMedia('(prefers-color-scheme: dark)').matches;
+                    e.classList.toggle('dark', m);
+                  }
+                } catch(n){}
+              }();
+            `,
+          }}
+        />
+      </head>
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen flex flex-col bg-[rgb(var(--background))] text-[rgb(var(--foreground))]`}>
+        <Providers>
+          <AuthProvider>
+            <NavBar />
+            <main className="flex-1">{children}</main>
+            <AuthDebug />
+            <DatabaseStatus />
+          </AuthProvider>
+        </Providers>
       </body>
     </html>
   );
