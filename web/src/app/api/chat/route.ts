@@ -3,13 +3,31 @@ import { NextResponse } from "next/server";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const BASE = process.env.API_URL ?? "http://127.0.0.1:8000"; // dev default
+function resolveBackendBase(): string | null {
+  const candidates = [
+    process.env.API_URL,
+    process.env.NEXT_PUBLIC_BACKEND_URL,
+    process.env.BACKEND_URL,
+    process.env.NEXT_PUBLIC_API_BASE,
+  ];
+  for (const candidate of candidates) {
+    const value = typeof candidate === "string" ? candidate.trim() : "";
+    if (!value) continue;
+    if (value.startsWith("/")) continue;
+    return value.replace(/\/$/, "");
+  }
+  return null;
+}
+
+const BASE_RESOLVED = resolveBackendBase();
+const BASE = BASE_RESOLVED ?? "http://127.0.0.1:8000"; // dev default
 const ALT = BASE.includes("127.0.0.1")
   ? BASE.replace("127.0.0.1", "localhost")
   : BASE.includes("localhost")
   ? BASE.replace("localhost", "127.0.0.1")
-  : "http://localhost:8000";
-const API_KEY = process.env.BACKEND_API_KEY;
+  : BASE;
+const API_KEY = process.env.BACKEND_API_KEY ?? process.env.NEXT_PUBLIC_BACKEND_API_KEY;
+const IN_PRODUCTION = Boolean(process.env.VERCEL || process.env.NODE_ENV === "production");
 
 type JsonObject = Record<string, unknown>;
 
@@ -28,6 +46,12 @@ function getErrorMessage(error: unknown): string {
 }
 
 export async function GET() {
+  if (!BASE_RESOLVED && IN_PRODUCTION) {
+    return NextResponse.json(
+      { ok: false, error: "Backend URL not configured. Set API_URL or NEXT_PUBLIC_BACKEND_URL." },
+      { status: 500 }
+    );
+  }
   try {
     const r = await fetch(`${BASE}/healthz`, { cache: "no-store" });
     const data = await parseJson(r);
@@ -52,6 +76,12 @@ export async function GET() {
 
 export async function POST(req: Request) {
   const body = (await req.json().catch(() => ({}))) as JsonObject;
+  if (!BASE_RESOLVED && IN_PRODUCTION) {
+    return NextResponse.json(
+      { error: "Backend URL not configured. Set API_URL or NEXT_PUBLIC_BACKEND_URL." },
+      { status: 500 }
+    );
+  }
   try {
     const r = await fetch(`${BASE}/ask`, {
       method: "POST",
