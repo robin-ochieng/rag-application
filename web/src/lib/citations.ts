@@ -1,31 +1,4 @@
-type Citation = {
-  docId: string;
-  title: string;
-  url: string;
-  page?: string | number;
-  section?: string;
-  score?: number;
-  sourceType: "InsuranceAct" | "IFRS17" | "InternalDoc" | "Web";
-};
-
-type SourceMetadataValue = string | number | boolean | null | undefined;
-
-interface SourceMetadata {
-  title?: string;
-  document_title?: string;
-  file_name?: string;
-  source?: string;
-  url?: string;
-  source_url?: string;
-  file_path?: string;
-  page?: string | number;
-  page_number?: string | number;
-  section?: string;
-  chunk_id?: string;
-  score?: number | string;
-  doc_id?: string;
-  [key: string]: SourceMetadataValue;
-}
+import type { Citation, SourceMetadata } from "@/types/citations";
 
 interface SourceLike {
   metadata?: SourceMetadata;
