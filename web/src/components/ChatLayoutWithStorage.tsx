@@ -82,6 +82,14 @@ export default function ChatLayoutWithStorage() {
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const streamMetaRef = useRef<{ sources: Source[]; citations: Citation[] }>({ sources: [], citations: [] });
+  
+  // Refs for stable callbacks
+  const currentChatIdRef = useRef<string | null>(null);
+  const addMessageRef = useRef(addMessage);
+  
+  // Keep refs updated
+  currentChatIdRef.current = currentChatId;
+  addMessageRef.current = addMessage;
 
   const applyToLastAssistant = useCallback((updater: (message: Message) => Message) => {
     setMsgs((prev) => {
@@ -96,42 +104,52 @@ export default function ChatLayoutWithStorage() {
     });
   }, []);
 
-  const { start: startStream, streaming } = useStreamAnswer({
-    onMeta: (sources, citations) => {
-      const normalized = citations && citations.length > 0
-        ? normalizeCitations(citations.map(toLibraryCitation))
-        : normalizeCitations(sourcesToCitations(sources));
-      const appCitations = toAppCitations(normalized);
-      streamMetaRef.current = { sources, citations: appCitations };
-      applyToLastAssistant((msg) => ({ ...msg, sources, citations: appCitations }));
-    },
-    onToken: (token) => {
-      applyToLastAssistant((msg) => ({
-        ...msg,
-        content: `${msg.content}${token}`,
-        sources: streamMetaRef.current.sources,
-        citations: streamMetaRef.current.citations,
-      }));
-    },
-    onDone: async (answer) => {
-      applyToLastAssistant((msg) => ({
-        ...msg,
-        content: answer,
-        sources: streamMetaRef.current.sources,
-        citations: streamMetaRef.current.citations,
-      }));
+  // Memoize stream callbacks to prevent unnecessary re-renders
+  const handleStreamMeta = useCallback((sources: Source[], citations?: Citation[]) => {
+    const normalized = citations && citations.length > 0
+      ? normalizeCitations(citations.map(toLibraryCitation))
+      : normalizeCitations(sourcesToCitations(sources));
+    const appCitations = toAppCitations(normalized);
+    streamMetaRef.current = { sources, citations: appCitations };
+    applyToLastAssistant((msg) => ({ ...msg, sources, citations: appCitations }));
+  }, [applyToLastAssistant]);
 
-      if (currentChatId && answer) {
-        try {
-          await addMessage(answer, "assistant");
-        } catch (error) {
-          console.error("Failed to save assistant message:", error);
-        }
+  const handleStreamToken = useCallback((token: string) => {
+    applyToLastAssistant((msg) => ({
+      ...msg,
+      content: `${msg.content}${token}`,
+      sources: streamMetaRef.current.sources,
+      citations: streamMetaRef.current.citations,
+    }));
+  }, [applyToLastAssistant]);
+
+  const handleStreamDone = useCallback(async (answer: string) => {
+    applyToLastAssistant((msg) => ({
+      ...msg,
+      content: answer,
+      sources: streamMetaRef.current.sources,
+      citations: streamMetaRef.current.citations,
+    }));
+    
+    // Save assistant message to database
+    if (currentChatIdRef.current && answer) {
+      try {
+        await addMessageRef.current(answer, "assistant");
+      } catch (error) {
+        console.error("Failed to save assistant message:", error);
       }
-    },
-    onError: (message) => {
-      applyToLastAssistant((msg) => ({ ...msg, error: message || "Stream error" }));
-    },
+    }
+  }, [applyToLastAssistant]);
+
+  const handleStreamError = useCallback((message: string) => {
+    applyToLastAssistant((msg) => ({ ...msg, error: message || "Stream error" }));
+  }, [applyToLastAssistant]);
+
+  const { start: startStream, streaming } = useStreamAnswer({
+    onMeta: handleStreamMeta,
+    onToken: handleStreamToken,
+    onDone: handleStreamDone,
+    onError: handleStreamError,
   });
 
   useEffect(() => {

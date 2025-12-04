@@ -29,6 +29,18 @@ export function useStreamAnswer(opts: UseStreamAnswerOptions = {}) {
   const controllerRef = useRef<AbortController | null>(null);
   const [streaming, setStreaming] = useState(false);
   const [answer, setAnswer] = useState("");
+  
+  // Store callbacks in refs to avoid stale closures
+  const onMetaRef = useRef(opts.onMeta);
+  const onTokenRef = useRef(opts.onToken);
+  const onDoneRef = useRef(opts.onDone);
+  const onErrorRef = useRef(opts.onError);
+  
+  // Update refs when callbacks change
+  onMetaRef.current = opts.onMeta;
+  onTokenRef.current = opts.onToken;
+  onDoneRef.current = opts.onDone;
+  onErrorRef.current = opts.onError;
 
   const start = useCallback(async (q: string) => {
     if (controllerRef.current) controllerRef.current.abort();
@@ -56,7 +68,7 @@ export function useStreamAnswer(opts: UseStreamAnswerOptions = {}) {
         let idx;
         while ((idx = buffer.indexOf("\n\n")) !== -1) {
           const raw = buffer.slice(0, idx).trim();
-            buffer = buffer.slice(idx + 2);
+          buffer = buffer.slice(idx + 2);
           if (!raw.startsWith("data:")) continue;
           const jsonPart = raw.slice(5).trim();
           if (jsonPart === "[DONE]") {
@@ -68,16 +80,16 @@ export function useStreamAnswer(opts: UseStreamAnswerOptions = {}) {
             if (evt.type === "meta") {
               // Convert sources to citations
               const citations = normalizeCitations(sourcesToCitations(evt.sources));
-              opts.onMeta?.(evt.sources, citations);
+              onMetaRef.current?.(evt.sources, citations);
             } else if (evt.type === "token") {
               setAnswer(a => a + evt.value);
-              opts.onToken?.(evt.value);
+              onTokenRef.current?.(evt.value);
             } else if (evt.type === "done") {
               setAnswer(evt.answer);
-              opts.onDone?.(evt.answer);
+              onDoneRef.current?.(evt.answer);
               setStreaming(false);
             } else if (evt.type === "error") {
-              opts.onError?.(evt.message);
+              onErrorRef.current?.(evt.message);
               setStreaming(false);
             }
           } catch (parseError) {
@@ -88,10 +100,10 @@ export function useStreamAnswer(opts: UseStreamAnswerOptions = {}) {
       setStreaming(false);
     } catch (error: unknown) {
       if (error instanceof DOMException && error.name === "AbortError") return;
-      opts.onError?.(getErrorMessage(error));
+      onErrorRef.current?.(getErrorMessage(error));
       setStreaming(false);
     }
-  }, [opts]);
+  }, []); // No dependencies - uses refs for callbacks
 
   const stop = useCallback(() => {
     if (controllerRef.current) controllerRef.current.abort();
