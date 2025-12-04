@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import "highlight.js/styles/github-dark.css";
 import NavBar from "@/components/NavBar";
 import Providers from "./providers";
 import { AuthProvider } from "@/contexts/AuthContext";
@@ -20,27 +19,7 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
-      <head>
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              !function(){
-                try{
-                  var e=document.documentElement;
-                  var t=localStorage.getItem('kenbright-theme');
-                  if(t && t !== 'system'){
-                    e.classList.toggle('dark', t === 'dark');
-                  } else {
-                    var m=window.matchMedia('(prefers-color-scheme: dark)').matches;
-                    e.classList.toggle('dark', m);
-                  }
-                } catch(n){}
-              }();
-            `,
-          }}
-        />
-      </head>
+    <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen flex flex-col bg-[rgb(var(--background))] text-[rgb(var(--foreground))]`}>
         <Providers>
           <AuthProvider>

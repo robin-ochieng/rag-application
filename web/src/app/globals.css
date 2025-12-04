@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-/* Color tokens: Light defaults */
+/* Color tokens: Light mode only */
 :root {
   --background: 255 255 255;           /* #ffffff */
   --foreground: 17 24 39;              /* #111827 */
@@ -24,29 +24,6 @@
 
   --primary: 99 102 241;               /* #6366F1 */
   --primary-foreground: 255 255 255;   /* #ffffff */
-}
-
-/* Dark overrides */
-.dark {
-  --background: 11 18 32;              /* #0B1220 */
-  --foreground: 229 231 235;           /* #E5E7EB */
-
-  --muted: 17 24 39;                   /* #111827 */
-  --muted-foreground: 156 163 175;     /* #9CA3AF */
-
-  --card: 15 23 42;                    /* #0F172A */
-  --card-foreground: 229 231 235;
-
-  --popover: 15 23 42;
-  --popover-foreground: 229 231 235;
-
-  --border: 31 41 55;                  /* #1F2937 */
-  --input: 31 41 55;
-
-  --accent: 17 24 39;
-  --accent-foreground: 229 231 235;
-
-  --ring: 99 102 241;                  /* #6366F1 */
 
   --primary: 167 139 250;              /* #A78BFA */
   --primary-foreground: 17 24 39;      /* #111827 */

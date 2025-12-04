@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useCallback } from "react";
 
 type Props = {
   id?: string;
@@ -19,61 +19,105 @@ export default function Composer({ id, value, placeholder, disabled, onChange, o
     const ta = taRef.current;
     if (!ta) return;
     ta.style.height = "auto";
-    const max = 180; // px
+    const max = 200; // px
     ta.style.height = Math.min(ta.scrollHeight, max) + "px";
   }, [value]);
 
+  const hasContent = value.trim().length > 0;
+
+  const handleSubmit = useCallback((e?: React.FormEvent<HTMLFormElement>) => {
+    if (e) e.preventDefault();
+    if (hasContent && !disabled) {
+      onSubmit();
+    }
+  }, [hasContent, disabled, onSubmit]);
+
   return (
-    <div className="sticky bottom-0 left-0 right-0 bg-[rgb(var(--background))]/80 supports-[backdrop-filter]:bg-[rgb(var(--background))]/60 backdrop-blur border-t border-[rgb(var(--border))]">
+    <div className="fixed bottom-0 left-0 right-0 lg:left-72 bg-gradient-to-t from-white via-white to-white/80 backdrop-blur-xl z-30">
       <form
         id={id}
-        onSubmit={(e) => onSubmit(e)}
-        className="mx-auto max-w-5xl px-0 sm:px-0 lg:px-0 py-3"
+        onSubmit={handleSubmit}
+        className="mx-auto max-w-4xl px-4 sm:px-6 py-4"
         aria-label="Message composer"
       >
-        <div className="relative rounded-[var(--radius-card)] border border-[rgb(var(--border))] bg-[rgb(var(--card))] shadow-[var(--shadow-card)]">
-          {/* Right send button */}
-          <div className="absolute right-2 top-2">
-            <button
-              type="submit"
-              aria-label="Send message"
-              disabled={disabled}
-              className="group inline-flex h-10 w-12 items-center justify-center rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--accent))] text-[rgb(var(--accent-foreground))] shadow-sm hover:shadow-md hover:bg-[rgb(var(--accent))]/90 focus:outline-none focus:ring-2 focus:ring-[rgb(var(--ring))] disabled:opacity-60 disabled:shadow-none transition-all duration-200 active:scale-[0.96]"
-              title="Send"
-            >
-              {/* Premium send icon (inspired by modern icon sets) */}
-              <svg
-                width="30"
-                height="30"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.9"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-                className="transition-transform duration-200 ease-out group-hover:scale-110 group-active:scale-95"
-              >
-                <path d="M3.5 11.25L19.2 5.4c.9-.34 1.72.48 1.38 1.38l-5.86 15.69c-.34.9-1.62.94-1.96.05l-2.28-5.94a1 1 0 0 0-.6-.6L3.55 13.7c-.92-.33-.93-1.63-.05-1.97Z" />
-                <path d="M10.25 13.75l3.9-3.9" />
-              </svg>
-              <span className="pointer-events-none absolute inset-0 rounded-md opacity-0 group-hover:opacity-40 group-active:opacity-60 transition duration-300 bg-[radial-gradient(circle_at_50%_50%,rgba(255,255,255,0.45),rgba(255,255,255,0))]" />
-            </button>
-          </div>
-          <div className="pl-3 pr-12 py-2">
-            <label htmlFor="chat-input" className="sr-only">Chat input</label>
-            <textarea
-              id="chat-input"
-              ref={taRef}
-              aria-label="Chat input"
-              placeholder={placeholder || "Ask about Insurance Act or IFRS-17..."}
-              value={value}
-              onChange={onChange}
-              onKeyDown={onKeyDown}
-              disabled={disabled}
-              rows={1}
-              className="w-full resize-none bg-transparent outline-none placeholder:text-[rgb(var(--muted-foreground))] text-[rgb(var(--foreground))] py-2.5"
-            />
+        <div className="relative group">
+          {/* Outer glow effect on focus */}
+          <div className="absolute -inset-0.5 bg-gradient-to-r from-indigo-500 via-purple-500 to-cyan-500 rounded-2xl opacity-0 group-focus-within:opacity-20 blur transition-opacity duration-300" />
+          
+          {/* Main input container */}
+          <div className="relative rounded-2xl border border-slate-200 bg-white shadow-lg shadow-slate-200/50 transition-all duration-300 group-focus-within:border-indigo-300 group-focus-within:shadow-xl group-focus-within:shadow-indigo-500/10">
+            <div className="flex items-end gap-3 p-3">
+              {/* Textarea container */}
+              <div className="flex-1 min-w-0">
+                <label htmlFor="chat-input" className="sr-only">Chat input</label>
+                <textarea
+                  id="chat-input"
+                  ref={taRef}
+                  aria-label="Chat input"
+                  placeholder={placeholder || "Ask about Insurance Act, IFRS-17, or compliance topics..."}
+                  value={value}
+                  onChange={onChange}
+                  onKeyDown={onKeyDown}
+                  disabled={disabled}
+                  rows={1}
+                  className="w-full resize-none bg-transparent outline-none text-slate-900 placeholder:text-slate-400 text-base leading-relaxed py-2 px-1 max-h-[200px] scrollbar-thin scrollbar-thumb-slate-300"
+                />
+              </div>
+              
+              {/* Send button */}
+              <div className="flex-shrink-0 pb-1">
+                <button
+                  type="submit"
+                  aria-label="Send message"
+                  disabled={disabled || !hasContent}
+                  className={`
+                    relative group/btn inline-flex items-center justify-center
+                    h-10 w-10 rounded-full
+                    transition-all duration-300 ease-out
+                    focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:ring-offset-2 focus:ring-offset-white
+                    disabled:cursor-not-allowed
+                    ${hasContent 
+                      ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-md hover:shadow-lg hover:scale-105 active:scale-95' 
+                      : 'bg-slate-100 text-slate-400'
+                    }
+                  `}
+                  title="Send message"
+                >
+                  {/* Clean arrow send icon */}
+                  <svg
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    className={`transition-transform duration-200 ${hasContent ? '-rotate-45' : ''}`}
+                  >
+                    <path
+                      d="M5 12h14M12 5l7 7-7 7"
+                      stroke="currentColor"
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            
+            {/* Helper text */}
+            <div className="px-4 pb-2 flex items-center justify-between text-xs text-slate-400">
+              <span className="flex items-center gap-1.5">
+                <kbd className="px-1.5 py-0.5 rounded bg-slate-100 font-mono text-[10px]">Enter</kbd>
+                <span>to send</span>
+                <span className="mx-1">•</span>
+                <kbd className="px-1.5 py-0.5 rounded bg-slate-100 font-mono text-[10px]">Shift + Enter</kbd>
+                <span>for new line</span>
+              </span>
+              {value.length > 0 && (
+                <span className={`transition-colors ${value.length > 4000 ? 'text-amber-500' : ''}`}>
+                  {value.length.toLocaleString()} characters
+                </span>
+              )}
+            </div>
           </div>
         </div>
       </form>

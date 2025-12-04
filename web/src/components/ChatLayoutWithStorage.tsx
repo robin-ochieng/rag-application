@@ -286,7 +286,7 @@ export default function ChatLayoutWithStorage() {
   }
 
   return (
-    <div className="flex h-[calc(100vh-4rem)]">
+    <div className="flex min-h-[calc(100vh-4rem)]">
       <button
         onClick={() => setSidebarOpen(true)}
         className="lg:hidden fixed top-20 left-4 z-50 p-2 bg-[rgb(var(--background))] border border-[rgb(var(--border))] rounded-lg shadow-sm"
@@ -305,7 +305,7 @@ export default function ChatLayoutWithStorage() {
 
       <div
         className={`
-          lg:relative lg:translate-x-0 lg:block
+          lg:fixed lg:top-16 lg:left-0 lg:translate-x-0 lg:block lg:h-[calc(100vh-4rem)]
           fixed top-0 left-0 h-full z-50
           transform transition-transform duration-300 ease-in-out
           ${sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}
@@ -324,12 +324,9 @@ export default function ChatLayoutWithStorage() {
         />
       </div>
 
-  <div className="flex-1 flex flex-col">
-        <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 py-4 min-h-full grid grid-rows-[auto,1fr,auto] gap-4 w-full">
-          <div className="flex items-center justify-between">
-            <h1 className="text-base font-semibold text-[rgb(var(--foreground))]">
-              {currentChatId ? "Chat" : "New Chat"}
-            </h1>
+  <div className="flex-1 flex flex-col lg:ml-72">
+        <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 py-4 grid gap-4 w-full">
+          <div className="flex items-center justify-end">
             <div className="flex items-center gap-2">
               <button
                 type="button"
@@ -340,41 +337,59 @@ export default function ChatLayoutWithStorage() {
                   }
                   setMsgs([]);
                 }}
-                className="h-9 rounded-md border border-[rgb(var(--border))] px-3 text-sm bg-[rgb(var(--accent))] text-[rgb(var(--accent-foreground))] hover:opacity-95 focus:outline-none focus:ring-2 focus:ring-[rgb(var(--ring))]"
+                className="inline-flex items-center gap-2 h-9 rounded-lg border border-slate-200 px-3.5 text-sm font-medium bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900 hover:border-slate-300 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:ring-offset-1 shadow-sm"
               >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+                </svg>
                 Clear chat
               </button>
             </div>
           </div>
 
-          <div ref={scrollRef} className="overflow-y-auto px-1">
+          <div ref={scrollRef} className="px-1 pb-32">
             <div className="flex flex-col gap-4 pb-4">
               {msgs.length === 0 && (
-                <div className="flex flex-col items-center justify-center py-20 text-center relative">
-                  <h2 className="text-xl font-semibold tracking-tight mb-4 bg-gradient-to-r from-indigo-500 via-sky-500 to-teal-500 bg-clip-text text-transparent">
-                    Welcome to Kenbright GPT
-                  </h2>
-                  <p className="max-w-lg text-sm sm:text-base leading-relaxed text-[rgb(var(--muted-foreground))] mb-7">
-                    Ask anything and I will search across curated Insurance Act and IFRS-17 resources to give concise, cited answers. Try asking about regulatory definitions, compliance obligations, contract measurement, or specific clauses.
-                  </p>
-                  <div className="flex flex-wrap items-center justify-center gap-2 mb-10">
-                    {[
-                      "How do I optimize IFRS-17 CSM calculations for profitability?",
-                      "What are the latest regulatory capital adequacy requirements?",
-                      "Guide me through risk adjustment methodologies under IFRS-17",
-                      "How to implement loss component recognition for complex contracts?",
-                    ].map((example) => (
-                      <button
-                        key={example}
-                        onClick={() => submitFollowUp(example)}
-                        className="group relative rounded-full border border-[rgb(var(--border))] px-4 py-1.5 text-xs sm:text-sm font-medium text-[rgb(var(--foreground))]/80 hover:text-[rgb(var(--foreground))] transition bg-[rgb(var(--background))]/60 hover:bg-[rgb(var(--accent))]/40"
-                      >
-                        {example}
-                      </button>
-                    ))}
+                <div className="flex flex-col items-center justify-center py-16 sm:py-24 text-center relative px-4">
+                  {/* Decorative background elements */}
+                  <div className="absolute inset-0 overflow-hidden pointer-events-none">
+                    <div className="absolute top-10 left-1/4 w-72 h-72 bg-gradient-to-br from-indigo-500/10 to-purple-500/10 rounded-full blur-3xl" />
+                    <div className="absolute bottom-10 right-1/4 w-72 h-72 bg-gradient-to-tr from-cyan-500/10 to-blue-500/10 rounded-full blur-3xl" />
                   </div>
-                  <div className="text-xs text-[rgb(var(--muted-foreground))] flex items-center gap-1">
-                    Developed by <span className="font-medium text-[rgb(var(--foreground))]">Kenbright AI</span>
+                  
+                  <h2 className="text-2xl sm:text-3xl font-bold tracking-tight mb-3 text-slate-900">
+                    Welcome to <span className="bg-gradient-to-r from-indigo-600 via-purple-600 to-cyan-600 bg-clip-text text-transparent">Kenbright GPT</span>
+                  </h2>
+                  <p className="max-w-xl text-base leading-relaxed text-slate-500 mb-10">
+                    Your AI-powered assistant for Insurance Act and IFRS-17 compliance.
+                  </p>
+                  
+                  {/* Example prompts */}
+                  <div className="w-full max-w-2xl mb-12">
+                    <p className="text-xs font-medium uppercase tracking-wider text-slate-400 mb-4">Try asking</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {[
+                        "How do I optimize IFRS-17 CSM calculations?",
+                        "What are the capital adequacy requirements?",
+                        "Explain risk adjustment methodologies",
+                        "How to implement loss component recognition?",
+                      ].map((text) => (
+                        <button
+                          key={text}
+                          onClick={() => submitFollowUp(text)}
+                          className="group text-left rounded-xl border border-slate-200 bg-white px-4 py-3.5 text-sm text-slate-700 hover:border-indigo-300 hover:bg-indigo-50 transition-all duration-200 shadow-sm hover:shadow-md"
+                        >
+                          <span className="group-hover:text-indigo-700 transition-colors">{text}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  
+                  {/* Footer */}
+                  <div className="flex items-center gap-2 text-sm text-slate-400">
+                    <div className="h-1 w-1 rounded-full bg-emerald-500" />
+                    <span>Powered by</span>
+                    <span className="font-semibold text-slate-600">Kenbright AI</span>
                   </div>
                 </div>
               )}
