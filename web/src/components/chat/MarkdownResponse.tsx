@@ -4,7 +4,7 @@ import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
 import type { ComponentPropsWithoutRef } from 'react';
 import type { Components, ExtraProps } from 'react-markdown';
-import 'highlight.js/styles/github-dark.css';
+import 'highlight.js/styles/github.css';
 
 interface MarkdownResponseProps {
   content: string;
