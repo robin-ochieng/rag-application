@@ -7,9 +7,6 @@ const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: false,
   },
-  eslint: {
-    ignoreDuringBuilds: false,
-  },
   output: "standalone",
   async rewrites() {
     const target = process.env.NEXT_PUBLIC_API_BASE;
